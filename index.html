@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="icon" href="data:,">
+  <meta charset="UTF-8" />
+  <title>GLTF Viewer</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<script type="module">
+  //Import modules
+  import * as THREE from './js/three.module.js';
+  import { GLTFLoader } from './js/GLTFLoader.js';
+  import { DRACOLoader } from './js/DRACOLoader.js';
+  import { OrbitControls } from './js/OrbitControls.js';
+ import GUI from './js/lil-gui.esm.js';   // ← this is the file you downloaded
+
+  const loader = new GLTFLoader();
+  const dracoLoader = new DRACOLoader();
+  // Point this to the Draco decoder files (downloaded from three.js repo)
+  dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/'); 
+  // or a local path like './draco/' if you host the decoder files yourself
+  //dracoLoader.setDecoderPath('./draco/'); 
+  
+  loader.setDRACOLoader(dracoLoader);
+  // renderer , camera, scene, controls
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x111111);
+
+// Camera
+const aspect = window.innerWidth / window.innerHeight;
+const camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 120000);
+
+// Position the camera so it can see the scene
+camera.position.set(500, 4000, 4000);
+camera.lookAt(0, 0, 0);
+
+  // Lighting section — right after camera
+  
+  const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+  scene.add(ambient);
+  
+  const hemi = new THREE.HemisphereLight(0x88ccff, 0x222244, 0.8);
+  scene.add(hemi);
+   
+  const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+  directional.position.set(1, 1, 1);
+  scene.add(directional);
+    
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const controls = new OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.target.set(0, 0, 0);
+  controls.update();
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  console.log('Attempting to load GLTF...');
+ 
+  // For picking
+  const raycaster = new THREE.Raycaster();
+  const mouse = new THREE.Vector2();
+
+
+  // Functions and helpers
+let selectionState;
+let selectionController;
+  
+
+  // get the disc sprite 
+  const sprite_sphere = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+  sprite_sphere.colorSpace = THREE.SRGBColorSpace; // ensures correct color rendering
+  console.log('Sprite loaded:', sprite_sphere);
+
+  // load the gtlf file 
+  // const loader = new GLTFLoader();
+  // set up list of files to load 
+  const allegianceFiles = [
+  { name: 'Empire',     url: './glbdata/vis_bubbleEmpire.gltf'},
+  { name: 'Federation', url: './glbdata/vis_bubbleFederation.gltf'},
+  { name: 'Alliance',   url: './glbdata/vis_bubbleAlliance.gltf'},
+  { name: 'Independent',   url: './glbdata/vis_bubbleIndependent.gltf'},
+  { name: 'IGAU',   url: './glbdata/vis_bubbleIGAU.gltf'},
+  { name: 'Mikunn',   url: './glbdata/vis_bubbleMikunn.gltf'},
+  { name: 'Guardian',   url: './glbdata/vis_bubbleGuardian.gltf'},
+  { name: 'Thargoid',   url: './glbdata/vis_bubbleThargoid.gltf'},
+];
+
+const allegianceGroups = {}; // store loaded groups
+let loadedCount = 0;
+
+function applyPointMaterialSettings(group, sprite) {
+  group.traverse((obj) => {
+    if (obj.isPoints) {
+      obj.material.map = sprite;
+      obj.material.size = 5.0;
+      obj.material.opacity = 0.5;
+      obj.material.transparent = true;
+      obj.material.depthWrite = false;
+      obj.material.blending = THREE.AdditiveBlending;
+      obj.material.emissiveIntensity = 0.5;
+      obj.material.needsUpdate = true;
+    }
+  });
+}
+
+// preload all GLTFs
+allegianceFiles.forEach(({ name, url}) => {
+  loader.load(
+    url,
+    (gltf) => {
+      console.log('Loaded', name, gltf);
+     
+
+      const group = new THREE.Group();
+      group.add(gltf.scene);
+      allegianceGroups[name] = group;
+      scene.add(group);
+      
+      applyPointMaterialSettings(group, sprite_sphere);
+
+      loadedCount++;
+      if (loadedCount === allegianceFiles.length) {
+        initGUIs(); // only once *all* are loaded
+      }
+    },
+    undefined,
+    (err) => console.error(`Error loading ${url}`, err)
+  );
+});
+
+// load star cloud 
+function createStarCloudMaterial(
+  camera,
+  {
+    sizeNear = 6.0,     // size when very close
+    sizeFar = 0.05,      // size when very far
+    opacityNear = 0.7,   // opacity when very close
+    opacityFar = 0.02,   // opacity when very far
+    biasPower = 1.5      // controls steepness of ramp-up
+  } = {}
+) {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uSizeNear:     { value: sizeNear },
+      uSizeFar:      { value: sizeFar },
+      uOpacityNear:  { value: opacityNear },
+      uOpacityFar:   { value: opacityFar },
+      uNear:         { value: camera.near },
+      uFar:          { value: camera.far },
+      uBiasPower:    { value: biasPower }
+    },
+    vertexShader: `
+      uniform float uSizeNear;
+      uniform float uSizeFar;
+      uniform float uNear;
+      uniform float uFar;
+      uniform float uBiasPower;
+
+      varying float vBiasT;
+
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+
+        float dist = -mvPosition.z;
+
+        // Log-normalized distance
+        float logNear = log(uNear + 1.0);
+        float logFar  = log(uFar + 1.0);
+        float logDist = log(dist + 1.0);
+        float t = clamp((logDist - logNear) / (logFar - logNear), 0.0, 1.0);
+
+        // Bias so stars stay small/faint longer, then ramp up steeply when close
+        float biasedT = 1.0 - pow(1.0 - t, uBiasPower);
+        vBiasT = biasedT;
+
+        // Interpolate size: far = small, near = big
+        float size = mix(uSizeFar, uSizeNear, 1.0 - biasedT);
+        gl_PointSize = clamp(size, 1.0, 20.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uOpacityNear;
+      uniform float uOpacityFar;
+      varying float vBiasT;
+
+      void main() {
+        vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+        if (dot(cxy, cxy) > 1.0) discard;
+
+        // Interpolate opacity: far = faint, near = bright
+        float alpha = mix(uOpacityFar, uOpacityNear, 1.0 - vBiasT);
+
+        gl_FragColor = vec4(1.0, 0.65, 0.0, alpha); // orange stars
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+}
+
+let starCloud = null;
+let starCloudController; // reference to the GUI button
+
+
+function toggleStarCloud() {
+  if (!starCloud) {
+    loader.load('./star_cloud.glb', (gltf) => {
+      starCloud = gltf.scene;
+
+      starCloud.traverse((obj) => {
+        if (obj.isPoints) {
+          obj.material = createStarCloudMaterial(camera, {
+          sizeNear: 6,
+          sizeFar: 0.05,
+          opacityNear: 0.8,
+          opacityFar: 0.02,
+          biasPower: 1.5
+        });
+        }
+      });
+
+
+      scene.add(starCloud);
+      starCloud.visible = true;
+
+      // Update button label
+      if (starCloudController) {
+        starCloudController.name('Hide Star Cloud');
+      }
+
+      console.log('Star cloud loaded and visible');
+    });
+  } else {
+    // Already loaded: just toggle visibility
+    starCloud.visible = !starCloud.visible;
+
+    // Update button label
+    if (starCloudController) {
+      starCloudController.name(starCloud.visible ? 'Hide Star Cloud' : 'Show Star Cloud');
+    }
+
+    console.log(`Star cloud ${starCloud.visible ? 'shown' : 'hidden'}`);
+  }
+}
+
+
+// Utility to set point size for all Points in a group
+function setPointSize(group, size) {
+  group.traverse(obj => {
+    if (obj.isPoints) {
+      obj.material.size = size;
+      obj.material.needsUpdate = true;
+    }
+  });
+}
+
+function setAllegiancePointSize(size) {
+  Object.values(allegianceGroups).forEach(group => {
+    group.traverse(obj => {
+      if (obj.isPoints) {
+        obj.material.size = size;
+        obj.material.needsUpdate = true;
+      }
+    });
+  });
+}
+
+function focusCameraOnObject(object, controls) {
+  // Compute bounding box in world space
+  const box = new THREE.Box3().setFromObject(object);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+
+  // Update OrbitControls target
+  controls.target.copy(center);
+  controls.update();
+
+  // Optionally move camera back a bit so the object fits in view
+  const size = new THREE.Vector3();
+  box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const fov = camera.fov * (Math.PI / 180);
+  let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+
+  cameraZ *= 1.5; // add some padding
+  camera.position.set(center.x, center.y, center.z + cameraZ);
+  camera.lookAt(center);
+}
+
+
+
+// add the colony targets 
+let colonyCloud = null;
+let colonyCloudController; // reference to the GUI button
+let colonyMeta = [];
+
+function toggleColonyCloud() {
+  if (!colonyCloud) {
+
+      fetch('./colonytargetCloud_meta.json')
+    .then(res => res.json())
+    .then(data => {
+      colonyMeta = data;
+    });
+
+    loader.load('./colonytargetCloud.glb', (gltf) => {
+      colonyCloud = gltf.scene;
+
+      colonyCloud.traverse((obj) => {
+        if (obj.isPoints) {
+          // You can reuse your star material or make a new one
+          obj.material = createStarCloudMaterial(camera, {
+            sizeNear: 12,
+            sizeFar: 0.1,
+            opacityNear: 1.0,
+            opacityFar: 0.05,
+            biasPower: 2.0
+          });
+        }
+      });
+     
+
+      scene.add(colonyCloud);
+      colonyCloud.visible = true;
+      
+      // Boost allegiance groups when colony targets are shown
+      setAllegiancePointSize(14.0);
+      // Focus camera on colony cloud
+      focusCameraOnObject(colonyCloud, controls);
+
+
+      if (colonyCloudController) {
+        colonyCloudController.name('Hide Colony Targets');
+      }
+
+      console.log('Colony target cloud loaded and visible');
+    });
+  } else {
+    // Already loaded: just toggle visibility
+    colonyCloud.visible = !colonyCloud.visible;
+
+    // Adjust allegiance group sizes depending on visibility
+    if (colonyCloud.visible) {
+      setAllegiancePointSize(14.0);
+    } else {
+      setAllegiancePointSize(5.0);
+    }
+
+    if (colonyCloudController) {
+      colonyCloudController.name(
+        colonyCloud.visible ? 'Hide Colony Targets' : 'Show Colony Targets'
+      );
+    }
+
+    console.log(
+      `Colony target cloud ${colonyCloud.visible ? 'shown' : 'hidden'}`
+    );
+  }
+}
+
+
+let galacticPlane = null;
+let galacticPlaneController;
+const galacticPlaneState = {
+  opacity: 0.3,
+  y: -5000
+};
+
+function toggleGalacticPlane() {
+  if (!galacticPlane) {
+    // First time: create and add the plane
+    const width = 90000;
+    const height = 90000;
+
+    const groundGeometry = new THREE.PlaneGeometry(width, height, 1, 1);
+    const textureLoader = new THREE.TextureLoader();
+    const groundTexture = textureLoader.load(
+      './galaxyscience/gamegalaxy-4500px.png'
+    );
+
+    const groundMaterial = new THREE.MeshBasicMaterial({
+      map: groundTexture,
+      transparent: true,
+      opacity: galacticPlaneState.opacity,
+      side: THREE.DoubleSide
+    });
+
+    galacticPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+    galacticPlane.rotation.x = -Math.PI / 2;
+    galacticPlane.rotation.z = -Math.PI / 2;
+    galacticPlane.position.set(25000, galacticPlaneState.y, 0);
+
+    scene.add(galacticPlane);
+
+    if (galacticPlaneController) {
+      galacticPlaneController.name('Hide Galactic Plane');
+    }
+
+    console.log('Galactic plane loaded and visible');
+  } else {
+    // Already created: toggle visibility
+    galacticPlane.visible = !galacticPlane.visible;
+
+    if (galacticPlaneController) {
+      galacticPlaneController.name(
+        galacticPlane.visible ? 'Hide Galactic Plane' : 'Show Galactic Plane'
+      );
+    }
+
+    console.log(`Galactic plane ${galacticPlane.visible ? 'shown' : 'hidden'}`);
+  }
+}
+
+/// funcions for adding the Helium concentrations 
+let guardianGroup = null;
+let guardianController;
+let heliumGroup = null;
+let heliumController;
+const heliumState = {
+  opacity: 0.5,
+  intensity: 1.0
+};
+
+let guardianMeshes = [];
+let guardian_ruins = [];
+let guardian_structures = [];
+let guardian_beacons = [];
+let hen_neb = [];
+let guardian_connector = [];
+
+function toggleHeliumCloud() {
+  if (!heliumGroup) {
+    // Load and process the GLB
+     loader.load('./galaxyscience/helium_levels.glb', (gltf) => {
+      const model = gltf.scene;
+
+
+      const meshList = [];
+      const He_mass_code_0 = [], He_mass_code_1 = [], He_mass_code_2 = [],
+            He_mass_code_3 = [], He_mass_code_4 = [], He_mass_code_5 = [],
+            He_mass_code_6 = [] ;
+     
+      let sphereMesh = null;
+
+      model.traverse((child) => {
+        if (child.isMesh || child.type === 'Points') {
+          meshList.push(child);
+
+          switch (child.name) {
+            case 'mesh0': He_mass_code_0.push(child); break;
+            case 'mesh1': He_mass_code_1.push(child); break;
+            case 'mesh2': He_mass_code_2.push(child); break;
+            case 'mesh3': He_mass_code_3.push(child); break;
+            case 'mesh4': He_mass_code_4.push(child); break;
+            case 'mesh5': He_mass_code_5.push(child); break;
+            case 'mesh6': He_mass_code_6.push(child); break;
+            case 'mesh7': guardian_ruins.push(child); break;
+            case 'mesh8': guardian_structures.push(child); break;
+            case 'mesh9': guardian_beacons.push(child); break;
+            case 'mesh10': hen_neb.push(child); break;
+            case 'mesh11': guardian_connector.push(child); break;
+          }
+
+       
+          console.log(`Mesh ${meshList.length - 1}:`, child.name || '(unnamed)');
+        }
+    
+
+      });
+
+      // Group He_mass_code_X meshes
+      heliumGroup = new THREE.Group();
+      heliumGroup.name = 'He_mass_group';
+
+      [
+        He_mass_code_0, He_mass_code_1, He_mass_code_2,
+        He_mass_code_3, He_mass_code_4, He_mass_code_5,
+        He_mass_code_6
+      ].forEach(arr => {
+        arr.forEach(mesh => heliumGroup.add(mesh));
+      });
+
+      // Cache original vertex colors
+      heliumGroup.traverse(obj => {
+        if (obj.isMesh && obj.geometry && obj.geometry.attributes.color) {
+          const colors = obj.geometry.attributes.color;
+          const orig = new Float32Array(colors.count * 3);
+          for (let i = 0; i < colors.count; i++) {
+            orig[i*3]   = colors.getX(i);
+            orig[i*3+1] = colors.getY(i);
+            orig[i*3+2] = colors.getZ(i);
+          }
+          obj.userData.originalColors = orig;
+        }
+
+        // Apply initial opacity
+        if (obj.material) {
+          obj.material.transparent = true;
+          obj.material.opacity = heliumState.opacity;
+          obj.material.blending = THREE.AdditiveBlending;
+          obj.material.depthWrite = false;   // 👈 add this line
+
+        }
+      });
+
+      scene.add(heliumGroup);
+      heliumController.name('Hide Helium Levels');
+      console.log('Helium cloud loaded and visible');
+ 
+     
+        // Group Guardian Sites
+          guardianGroup = new THREE.Group();
+          guardianGroup.name = 'Guardian Sites';
+
+          [
+            ...guardian_ruins,
+            ...guardian_structures,
+            ...guardian_beacons,
+            ...guardian_connector   // now includes mesh11 group
+         ].forEach(mesh => guardianGroup.add(mesh));
+
+          scene.add(guardianGroup);
+          guardianController.name('Hide Guardian Sites');
+          console.log('Guardian Sites loaded and visible');
+
+    });
+
+  } else {
+    // Toggle visibility
+    heliumGroup.visible = !heliumGroup.visible;
+    heliumController.name(
+      heliumGroup.visible ? 'Hide Helium Levels' : 'Show Helium Levels'
+    );
+    console.log(`Helium cloud ${heliumGroup.visible ? 'shown' : 'hidden'}`);
+  }
+  
+}
+
+// funtion to adjust helium intensity vertex colors 
+function adjustVertexColors(obj, factor) {
+  const colors = obj.geometry.attributes.color;
+  const orig = obj.userData.originalColors;
+
+  const t = factor - 1;
+
+  for (let i = 0; i < colors.count; i++) {
+    let r = orig[i*3];
+    let g = orig[i*3+1];
+    let b = orig[i*3+2];
+
+    if (r > b) {
+      r = THREE.MathUtils.lerp(r, 1.0, t);
+      g = THREE.MathUtils.lerp(g, 0.0, t);
+      b = THREE.MathUtils.lerp(b, 0.0, t);
+    } else if (b > r) {
+      r = THREE.MathUtils.lerp(r, 0.0, t);
+      g = THREE.MathUtils.lerp(g, 0.0, t);
+      b = THREE.MathUtils.lerp(b, 1.0, t);
+    }
+
+    colors.setXYZ(i, r, g, b);
+  }
+
+  colors.needsUpdate = true;
+}
+
+function toggleGuardianSites() {
+  if (!guardianGroup) {
+    console.warn('Guardian Sites not yet loaded');
+    return;
+  }
+
+  guardianGroup.visible = !guardianGroup.visible;
+  guardianController.name(
+    guardianGroup.visible ? 'Hide Guardian Sites' : 'Show Guardian Sites'
+  );
+  console.log(`Guardian Sites ${guardianGroup.visible ? 'shown' : 'hidden'}`);
+}
+
+// add the nebulas 
+  const labels = {
+      "NGC 133": [-954.0 ,-382.0, -397.0],
+      "Orion Dark": [-1337, -312,603.0],
+      "LBN 623 Nebula": [-332, -16,-499],
+      "Witch Head Nebula": [-718 -385, 359],
+      "California Nebula": [-927 -211, -337],
+      "Barnards's Loop": [-1224 -421, 617],
+      "Veil Nebula West": [418 ,-193, -1398],
+      "Sadr": [356 ,53, -1794],
+      "Pelican Nebula": [174 ,-1, -1886],
+      "Coal Sack Nebula": [212, 43,501],
+      "Lagoon Nebula": [ 4474,-92,-486],
+      "Triffid Nebula": [5162,-26.3,-638]     
+    };
+      
+  const nebulaMaterial = new THREE.MeshPhongMaterial({
+    color: 0x9966ff,           // Ethereal violet
+    transparent: true,
+    opacity: 0.3,
+    shininess: 80,
+    emissive: 0x330066,
+    emissiveIntensity: 0.5,
+    });
+      
+  const createTextSprite = (text) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 512;  // Wider canvas for longer labels
+    canvas.height = 128;
+
+    const context = canvas.getContext('2d');
+    context.font = 'Bold 48px Arial';
+    context.fillStyle = 'rgba(255,255,255,0.8)';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(text, canvas.width / 2, canvas.height / 2);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.needsUpdate = true;
+
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(material);
+    sprite.scale.set(150, 50, 1); // Wider scale to match canvas
+    return sprite;
+  };
+
+
+  Object.entries(labels).forEach(([name, pos]) => {
+    // Ethereal sphere
+    const sphere = new THREE.Mesh(
+      new THREE.SphereGeometry(40, 32, 32),
+      new THREE.MeshPhongMaterial({
+        color: 0x9966ff,
+        transparent: true,
+        opacity: 0.3,
+        emissive: 0x330066,
+        emissiveIntensity: 0.5,
+      })
+    );
+    sphere.position.set(...pos);
+    scene.add(sphere);
+
+    // Sprite label
+    const label = createTextSprite(name);
+    label.position.set(pos[0], pos[1] + 60, pos[2]); // Offset above sphere
+    scene.add(label);
+  });
+
+  // function to add the steller density scans
+    let densityscanCloud = null;
+    let densityscanController; // reference to the GUI button
+    let teapot = null;
+
+    function toggledensityscanCloud() {
+      if (!densityscanCloud) {
+        // First load the density scans
+        loader.load('./DW3/scans.glb', (gltf) => {
+          densityscanCloud = gltf.scene;
+
+          densityscanCloud.traverse(obj => {
+            console.log(obj.type, obj.name, obj.geometry);
+            if (obj.geometry) {
+              console.log(Object.keys(obj.geometry.attributes));
+            }
+          });
+
+          scene.add(densityscanCloud);
+          densityscanCloud.visible = true;
+
+          // Now load the teapot
+          loader.load('./DW3/the_utah_teapot.glb', (gltf2) => {
+            teapot = gltf2.scene;
+            teapot.position.set(13300, -500, -1000);
+            teapot.scale.set(8, 8, 8);   // 20× bigger in all directions
+            // Override materials for a golden glow
+            teapot.traverse(obj => {
+              if (obj.isMesh) {
+                obj.material = new THREE.MeshStandardMaterial({
+                  color: 0xffd700,        // base gold
+                  metalness: 0.8,         // metallic sheen
+                  roughness: 0.3,         // a bit of gloss
+                  emissive: 0xffa500,     // warm orange-gold glow
+                  emissiveIntensity: 1.5  // crank this up for "self-lit" look
+                });
+                obj.castShadow = true;
+                obj.receiveShadow = true;
+              }
+            });
+
+
+            scene.add(teapot);
+            teapot.visible = true;
+          });
+
+          if (densityscanController) {
+            densityscanController.name('Hide Density Scans');
+          }
+
+          console.log('Density Scan loaded and visible');
+        });
+      } else {
+        // Already loaded: just toggle visibility
+        densityscanCloud.visible = !densityscanCloud.visible;
+        if (teapot) teapot.visible = !teapot.visible;
+
+        if (densityscanController) {
+          densityscanController.name(
+            densityscanCloud.visible ? 'Hide Density Scan' : 'Show Density Scan'
+          );
+        }
+
+        console.log(
+          `density scan ${densityscanCloud.visible ? 'shown' : 'hidden'}, ` +
+          `teapot ${teapot && teapot.visible ? 'shown' : 'hidden'}`
+        );
+      }
+    }
+
+// --- IsoLevel GLBs (reversed: high → low) ---
+const isoFiles = [
+  { level: "1e-1", file: "KDEglb/iso_0.1_draco.glb" },
+  { level: "1e-2", file: "KDEglb/iso_0.01_draco.glb" },
+  { level: "1e-3", file: "KDEglb/iso_0.001_draco.glb" },
+  { level: "1e-4", file: "KDEglb/iso_0.0001_draco.glb" },
+  { level: "1e-5", file: "KDEglb/iso_1e-05_draco.glb" },
+  { level: "1e-6", file: "KDEglb/iso_1e-06_draco.glb" },
+  { level: "1e-7", file: "KDEglb/iso_1e-07_draco.glb" }
+];
+
+const isoMeshes = [];
+let isoGroup = null;
+let isoController;
+
+// --- Toggle loader ---
+function toggleIsoGroup() {
+  if (!isoGroup) {
+    isoGroup = new THREE.Group();
+    scene.add(isoGroup);
+
+    isoFiles.forEach((iso, idx) => {
+      loader.load(iso.file, (gltf) => {
+        const mesh = gltf.scene;
+        mesh.visible = false; // start hidden
+        isoGroup.add(mesh);
+        isoMeshes[idx] = mesh;
+
+        // Style this mesh immediately
+        styleSingleIsoMesh(mesh, idx, isoFiles.length);
+
+
+      });
+    });
+    
+
+    if (isoController) {
+      isoController.name('Hide IsoLevels');
+    }
+    console.log('IsoLevels loaded');
+  } else {
+    // Toggle visibility of the whole group
+    isoGroup.visible = !isoGroup.visible;
+    if (isoController) {
+      isoController.name(isoGroup.visible ? 'Hide IsoLevels' : 'Show IsoLevels');
+    }
+    console.log(`IsoLevels ${isoGroup.visible ? 'shown' : 'hidden'}`);
+  }
+}
+
+function styleSingleIsoMesh(mesh, idx, total) {
+  // Normalized 0 → 1 across the stack, but inverted
+  const t = 1 - (idx / (total - 1));
+
+  // Now index 0 (highest density) → solid & red,
+  // last index (lowest density) → faint & blue
+  const opacity = 0.15 + 0.5 * t;   // 0.75 → 0.15 across stack
+  const hue = 0.6 - 0.6 * t;        // 0.0 (red) at core → 0.6 (blue) outer
+  const color = new THREE.Color().setHSL(hue, 1.0, 0.5);
+
+  mesh.traverse(obj => {
+    if (obj.isMesh) {
+      obj.material = new THREE.MeshStandardMaterial({
+        color: color,
+        transparent: true,
+        opacity: opacity,
+        depthWrite: false,   // helps blending
+        side: THREE.DoubleSide
+      });
+    }
+  });
+}
+
+// Globals
+let clipPlanes = [];
+let clippingEnabled = false;
+let clipController;   // <— add this
+
+
+// Discrete thickness values
+const thicknessSteps = [10, 20, 40, 80, 150, 300, 600, 1200, 2500, 5000, 10000, 20000, 40000, 90000];
+
+// Axis-specific ranges
+const axisRanges = {
+  x: { min: -20000, max: 70000 },
+  y: { min: -10000, max: 10000 },
+  z: { min: -45000, max: 45000 }
+};
+
+// State
+const clipState = {
+  axis: 'x',
+  center: 0,
+  thicknessIndex: 0
+};
+
+function currentThickness() {
+  return thicknessSteps[clipState.thicknessIndex] ?? thicknessSteps[0];
+}
+
+function applyClippingPlanes() {
+  if (!clippingEnabled) return;
+
+  const { axis, center, thicknessIndex } = clipState;
+  const thickness = currentThickness();
+  const half = thickness / 2;
+
+  let normal;
+  if (axis === 'x') normal = new THREE.Vector3(1, 0, 0);
+  else if (axis === 'y') normal = new THREE.Vector3(0, 1, 0);
+  else normal = new THREE.Vector3(0, 0, 1);
+
+  const minVal = center - half;
+  const maxVal = center + half;
+
+  const planeMin = new THREE.Plane(normal.clone(), -minVal);
+  const planeMax = new THREE.Plane(normal.clone().negate(), maxVal);
+
+  clipPlanes = [planeMin, planeMax];
+
+  isoMeshes.forEach(m => {
+    if (!m) return;
+    m.traverse(obj => {
+      if (obj.isMesh && obj.material) {
+        obj.material.clippingPlanes = clipPlanes;
+        obj.material.clipShadows = true;
+      }
+    });
+  });
+}
+
+function toggleClippingSlab() {
+  if (!clippingEnabled) {
+    renderer.localClippingEnabled = true;
+    clippingEnabled = true;
+    applyClippingPlanes();
+    if (clipController) clipController.name('Disable Clipping Slab');
+  } else {
+    renderer.localClippingEnabled = false;
+    isoMeshes.forEach(m => {
+      if (!m) return;
+      m.traverse(obj => {
+        if (obj.isMesh && obj.material) {
+          obj.material.clippingPlanes = [];
+        }
+      });
+    });
+    clippingEnabled = false;
+    if (clipController) clipController.name('Enable Clipping Slab');
+  }
+}
+
+
+
+// set up modes for UI control 
+function initGUIs() {
+    // your full GUI setup block goes here
+    // (modeGUI, colonizationGUI, igauGUI, etc.)
+
+
+  const modes = {
+    current: 'Colonization', // default
+    options: ['Colonization', 'IGAU Expeditions', 'DW3', 'Galaxy Science']
+  };
+
+  // Create a dedicated GUI for mode selection
+  const modeGUI = new GUI({ width: 300 });
+  modeGUI.domElement.style.position = 'absolute';
+  modeGUI.domElement.style.top = '10px';
+  modeGUI.domElement.style.left = '10px';
+
+  // --- Credits folder ---
+  const creditsFolder = modeGUI.addFolder('Credits');
+  creditsFolder.add({info: 'Spansh, EDGalaxydata.space, Edastro (permison for galaxy overlay)'}, 'info').name('Data Sources');
+  creditsFolder.add({info: 'IGAU , Mikkumm mercs  '}, 'info').name('Squadrons');
+  creditsFolder.add({info: 'Everyone who contributed data through EDDN etc'}, 'info').name('CMDRs')
+  creditsFolder.open();
+
+  const modeFolder = modeGUI.addFolder('Mode Selection');
+
+  // Create radio-style buttons
+  modes.options.forEach((label) => {
+    modeFolder.add({ select: () => {
+      if (modes.current !== label) {
+        modes.current = label;
+        switchMode(label);
+        updateRadioHighlight();
+      }
+    }}, 'select').name(label);
+  });
+
+function updateRadioHighlight() {
+  modeFolder.__controllers.forEach((controller) => {
+    const label = controller.name;
+    const isActive = label === modes.current;
+
+    const container = controller.domElement;
+    const funcDiv = container.querySelector('.function');
+
+    if (funcDiv) {
+      funcDiv.style.background = isActive ? '#4caf50' : '';
+      funcDiv.style.color = isActive ? '#fff' : '';
+      funcDiv.style.fontWeight = isActive ? 'bold' : '';
+      funcDiv.style.borderRadius = '4px';
+      funcDiv.style.padding = '4px 8px';
+      funcDiv.style.marginBottom = '4px';
+      funcDiv.style.textAlign = 'center';
+      funcDiv.style.cursor = 'pointer';
+      funcDiv.style.transition = 'background 0.3s ease';
+    }
+  });
+}
+
+  // Initialize highlight
+  setTimeout(updateRadioHighlight, 0);
+
+
+  // set up sub GUIs
+  const subGuiTop = '270px';
+  const subGuiLeft = '10px';
+
+  // Colonization sub-GUI
+  const colonizationGUI = new GUI({ width: 300 });
+  colonizationGUI.domElement.style.position = 'absolute';
+  colonizationGUI.domElement.style.top = subGuiTop;
+  colonizationGUI.domElement.style.left = subGuiLeft;
+
+  // Add a static header (not a folder)
+  const colonizationHeader = document.createElement('div');
+  colonizationHeader.innerText = 'Colonization Controls';
+  colonizationHeader.style.fontWeight = 'bold';
+  colonizationHeader.style.fontSize = '14px';
+  colonizationHeader.style.color = '#2196f3';
+  colonizationHeader.style.margin = '6px 0';
+
+  // Insert at the top of the GUI
+  colonizationGUI.domElement.prepend(colonizationHeader);
+
+
+  // Timeline slider + allegiance toggles go here
+  const state = { step: 44 };
+    colonizationGUI.add(state, 'step', 0, 44, 1)
+    .name('Visible Step')
+    .onChange((val) => {
+      Object.values(allegianceGroups).forEach((group) => {
+        if (!group.visible) return;
+
+        const meshes = [];
+        group.traverse((obj) => {
+          if (obj.isPoints) meshes.push(obj);
+        });
+        meshes.sort((a, b) => a.name.localeCompare(b.name));
+
+        meshes.forEach((m, i) => {
+          m.visible = (i === 0) || (i <= val);
+        });
+      });
+    });
+
+  // Allegiance visibility toggles (all under one folder)
+const allegianceFolder = colonizationGUI.addFolder('Allegiances');
+
+// Add master toggle
+const allegianceState = { allVisible: true };
+
+allegianceFolder.add(allegianceState, 'allVisible')
+  .name('Show All')
+  .onChange((val) => {
+    Object.values(allegianceGroups).forEach(group => {
+      group.visible = val;
+    });
+    // Update the GUI checkboxes for each group
+    allegianceFolder.__controllers.forEach(ctrl => {
+      if (ctrl.property === 'visible') {
+        ctrl.setValue(val);
+      }
+    });
+  });
+
+// Add individual toggles
+Object.keys(allegianceGroups).forEach((name) => {
+  const group = allegianceGroups[name];
+  allegianceFolder.add(group, 'visible').name(name);
+});
+
+
+
+  // Add a toggle button to your GUI
+    starCloudController = colonizationGUI
+  .add({ toggleStarCloud }, 'toggleStarCloud')
+  .name('Show Star Cloud'); // initial label
+
+  // Add a toggle button to your GUI
+  colonyCloudController = colonizationGUI
+  .add({ toggleColonyCloud }, 'toggleColonyCloud')
+  .name('Show Colony Targets'); // initial label
+
+
+
+  // --- Selection Results folder ---
+  const selectionFolder = colonizationGUI.addFolder('Selection Results');
+
+  // global state object
+// global state object with instructions
+  selectionState = { points: "Toggle Star Clound on\nPress 'B' to toggle search box\nPress 'N' to analyze points" };
+  
+
+  // add to GUI
+  selectionController = selectionFolder.add(selectionState, 'points').name('Points Inside Box');
+
+ // After you create selectionController
+const inputEl = selectionController.domElement.querySelector('input');
+const textarea = document.createElement('textarea');
+textarea.style.width = '100%';
+textarea.style.height = '200px';
+textarea.style.whiteSpace = 'pre';
+textarea.style.fontFamily = 'monospace';
+
+// Replace input with textarea
+inputEl.parentNode.replaceChild(textarea, inputEl);
+
+// Hook it up to reflect selectionState.points
+selectionController.__textarea = textarea;
+selectionController.updateDisplay = function () {
+  textarea.value = selectionState.points;
+};
+selectionController.updateDisplay();
+
+
+
+  // Hide initially if not active
+  colonizationGUI.hide();
+
+  // Other mode GUIs
+
+  const igauGUI = new GUI({ width: 300 });
+  igauGUI.domElement.style.top = subGuiTop;
+  igauGUI.domElement.style.left = subGuiLeft;
+  igauGUI.add({ info: () => {} }, 'info').name('IGAU Controls');
+
+  // Add a static header (not a folder)
+  // IGAU
+  const IGAUHeader = document.createElement('div');
+  IGAUHeader.innerText = 'IGAU Expeditions Controls';
+  IGAUHeader.style.fontWeight = 'bold';
+  IGAUHeader.style.fontSize = '14px';
+  IGAUHeader.style.color = '#2196f3';
+  IGAUHeader.style.margin = '6px 0';
+
+  igauGUI.domElement.prepend(IGAUHeader);
+
+  igauGUI.hide();
+
+// DW controls 
+// DW controls
+const dw3GUI = new GUI({ width: 300 });
+dw3GUI.domElement.style.top = subGuiTop;
+dw3GUI.domElement.style.left = subGuiLeft;
+dw3GUI.add({ info: () => {} }, 'info').name('DW3 Controls');
+
+// Add a static header
+const DW3Header = document.createElement('div');
+DW3Header.innerText = 'DW3 Scientific Survey Controls';
+DW3Header.style.fontWeight = 'bold';
+DW3Header.style.fontSize = '14px';
+DW3Header.style.color = '#2196f3';
+DW3Header.style.margin = '6px 0';
+dw3GUI.domElement.prepend(DW3Header);
+
+// --- Density scan toggle ---
+densityscanController = dw3GUI
+  .add({ toggledensityscanCloud }, 'toggledensityscanCloud')
+  .name('Show density Scans');
+
+// --- Galactic plane toggle + controls ---
+galacticPlaneController = dw3GUI
+  .add({ toggleGalacticPlane }, 'toggleGalacticPlane')
+  .name('Show Galactic Plane');
+
+dw3GUI.add(galacticPlaneState, 'opacity', 0, 1, 0.01)
+  .name('Galaxy Map Opacity')
+  .onChange((val) => {
+    if (galacticPlane) {
+      galacticPlane.material.opacity = val;
+      galacticPlane.material.transparent = true;
+    }
+  });
+
+dw3GUI.add(galacticPlaneState, 'y', -20000, 20000, 20)
+  .name('Galaxy Map Y Position')
+  .onChange((val) => {
+    if (galacticPlane) {
+      galacticPlane.position.y = val;
+    }
+  });
+
+// --- IsoLevel controls ---
+const isoState = { slider: 0 };
+
+isoController = dw3GUI
+  .add({ toggleIsoGroup }, 'toggleIsoGroup')
+  .name('Show IsoLevels');
+
+dw3GUI.add(isoState, 'slider', 0, isoFiles.length, 1)
+  .name('IsoLevel Slider')
+  .onChange((val) => {
+    isoMeshes.forEach((m, i) => {
+      if (m) {
+        m.visible = (i < val);
+      }
+    });
+  });
+
+// --- Clipping slab controls ---
+clipController = dw3GUI
+  .add({ toggleClippingSlab }, 'toggleClippingSlab')
+  .name('Enable Clipping Slab');
+
+
+// Discrete thickness steps
+const thicknessSteps = [10, 20, 40, 80, 150, 300, 600, 1200, 2500, 5000, 10000, 20000, 40000, 90000];
+clipState.thicknessIndex = 0;
+
+// Center slider
+const centerController = dw3GUI.add(
+  clipState,
+  'center',
+  axisRanges.x.min,
+  axisRanges.x.max,
+  100
+).name('Slice Center')
+ .onChange(applyClippingPlanes);
+
+// Thickness slider
+const thicknessController = dw3GUI.add(
+  clipState,
+  'thicknessIndex',
+  0,
+  thicknessSteps.length - 1,
+  1
+).name('Slice Thickness')
+ .onChange(() => {
+   applyClippingPlanes();
+   updateThicknessLabel();
+});
+
+// Label updater
+function updateThicknessLabel() {
+  const idx = Math.max(0, Math.min(clipState.thicknessIndex, thicknessSteps.length - 1));
+  const val = thicknessSteps[idx];
+  thicknessController.name(`Slice Thickness: ${val}`);
+}
+updateThicknessLabel();
+
+// Axis selector (AFTER center/thickness controllers exist)
+dw3GUI.add(clipState, 'axis', ['x','y','z']).name('Clip Axis').onChange((axis) => {
+  const r = axisRanges[axis];
+  clipState.center = (r.min + r.max) / 2;
+  centerController.min(r.min).max(r.max).setValue(clipState.center);
+
+  clipState.thicknessIndex = 0;
+  thicknessController.setValue(clipState.thicknessIndex);
+  updateThicknessLabel();
+
+  applyClippingPlanes();
+});
+
+// Optional: hide GUI after setup
+dw3GUI.hide();
+
+
+
+// Add science folder control   
+  const scienceGUI = new GUI({ width: 300 });
+  scienceGUI.domElement.style.top = subGuiTop;
+  scienceGUI.domElement.style.left = subGuiLeft;
+  scienceGUI.add({ info: () => {} }, 'info').name('Science Controls');
+  
+    // Add a static header (not a folder)
+  const scienceHeader = document.createElement('div');
+  scienceHeader.innerText = 'Galactic Science Controls';
+  scienceHeader.style.fontWeight = 'bold';
+  scienceHeader.style.fontSize = '14px';
+  scienceHeader.style.color = '#2196f3';
+  scienceHeader.style.margin = '6px 0';
+
+  scienceGUI.domElement.prepend(scienceHeader);
+
+  galacticPlaneController = scienceGUI
+    .add({ toggleGalacticPlane }, 'toggleGalacticPlane')
+    .name('Show Galactic Plane');
+
+  scienceGUI.add(galacticPlaneState, 'opacity', 0, 1, 0.01)
+    .name('Galaxy Map Opacity')
+    .onChange((val) => {
+      if (galacticPlane) {
+        galacticPlane.material.opacity = val;
+        galacticPlane.material.transparent = true;
+      }
+    });
+
+  scienceGUI.add(galacticPlaneState, 'y', -20000, 20000, 20)
+    .name('Galaxy Map Y Position')
+    .onChange((val) => {
+      if (galacticPlane) {
+        galacticPlane.position.y = val;
+      }
+    });
+
+  heliumController = scienceGUI
+    .add({ toggleHeliumCloud }, 'toggleHeliumCloud')
+    .name('Show Helium Levels');
+
+  scienceGUI.add(heliumState, 'opacity', 0, 1, 0.01)
+    .name('Helium Opacity')
+    .onChange((val) => {
+      if (heliumGroup) {
+        heliumGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+
+    heliumState.colorIntensity = 1.0;
+    scienceGUI.add(heliumState, 'colorIntensity', 1.0, 2.0, 0.01)
+      .name('Helium Color Intensity')
+      .onChange((val) => {
+        if (heliumGroup) {
+          heliumGroup.traverse(obj => {
+            if (obj.geometry && obj.geometry.attributes.color && obj.userData.originalColors) {
+              adjustVertexColors(obj, val);
+            }
+          });
+        }
+      });
+
+    guardianController = scienceGUI
+      .add({ toggleGuardianSites }, 'toggleGuardianSites')
+      .name('Show Guardian Sites');
+
+  scienceGUI.hide();
+
+  function switchMode(mode) {
+    // Hide all sub-GUIs
+    colonizationGUI.hide();
+    igauGUI.hide();
+    dw3GUI.hide();
+    scienceGUI.hide();
+
+    // Show the one for the selected mode
+    if (mode === 'Colonization') {
+      colonizationGUI.show();
+      focusCameraOnColonization();
+      loadModeAssets('colonization');
+    } else if (mode === 'IGAU Expeditions') {
+      igauGUI.show();
+      focusCameraOnIGAU();
+      loadModeAssets('igau');
+    } else if (mode === 'DW3') {
+      dw3GUI.show();
+      focusCameraOnDW3();
+      loadModeAssets('dw3');
+    } else if (mode === 'Galaxy Science') {
+      scienceGUI.show();
+      focusCameraOnScience();
+      loadModeAssets('science');
+    }
+  }
+
+
+// run and reset 
+switchMode(modes.current);
+
+
+
+}
+
+
+  const targetMarkerGeometry = new THREE.SphereGeometry(5, 16, 16);
+    const targetMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const targetMarker = new THREE.Mesh(targetMarkerGeometry, targetMarkerMaterial);
+    scene.add(targetMarker);
+
+    // Global reference
+    let targetLine;
+
+    // Create once
+    function initTargetLine() {
+      const geom = new THREE.BufferGeometry();
+      const positions = new Float32Array(6); // 2 points * 3 coords
+      geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+
+      const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 }); // thin green line
+      targetLine = new THREE.Line(geom, mat);
+      scene.add(targetLine);
+    }
+    initTargetLine()
+        const baseMarker = new THREE.Mesh(
+      new THREE.CircleGeometry(5, 32),
+      new THREE.MeshBasicMaterial({ color: 0x00ff00 })
+    );
+    baseMarker.rotation.x = -Math.PI / 2; // lay flat
+    scene.add(baseMarker);
+
+
+function handleKeyDown(event) {
+    const moveDistance = 10; // Adjust as needed
+    const targetMoveDistance = 10; // Adjust as needed
+
+    switch (event.key) {
+        // W: Move camera forward (along z-axis)
+        case 'w':
+            camera.position.x -= moveDistance;
+            controls.target.x -= targetMoveDistance;
+            break;
+        // S: Move camera backward
+        case 's':
+            camera.position.x += moveDistance;
+            controls.target.x += targetMoveDistance;
+            break;
+        // A: Move camera left (along x-axis)
+        case 'a':
+            camera.position.z -= moveDistance;
+            controls.target.z -= targetMoveDistance;
+            break;
+        // D: Move camera right
+        case 'd':
+            camera.position.z += moveDistance;
+            controls.target.z += targetMoveDistance;
+            break;
+        // Q: Move camera up (along y-axis)
+        case 'q':
+            camera.position.y += moveDistance;
+            controls.target.y += targetMoveDistance;
+            break;
+        // E: Move camera down
+        case 'e':
+            camera.position.y -= moveDistance;
+            controls.target.y -= targetMoveDistance;
+            break;
+        
+            // b: Creat search box arround target
+        case 'b' :
+             toggleSearchBox();
+            break;
+        case 'n':
+            if (searchBox && searchBox.visible) {
+              analyzePointsInBox(searchBox);
+            }
+            break;
+
+    }
+    // 5. Update controls after moving
+    controls.update();
+}
+
+
+document.addEventListener('keydown', handleKeyDown, false);
+
+
+// Global reference
+let searchBox;
+
+function initSearchBox() {
+  const boxGeometry = new THREE.BoxGeometry(100, 100, 100);
+  const boxMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00ff00,
+    wireframe: true
+  });
+
+  searchBox = new THREE.Mesh(boxGeometry, boxMaterial);
+  searchBox.visible = false; // hidden by default
+  scene.add(searchBox);
+
+  // Precompute bounding box once
+  searchBox.geometry.computeBoundingBox();
+}
+
+initSearchBox()
+
+function toggleSearchBox() {
+  if (!searchBox) return;
+
+  // Flip visibility
+  searchBox.visible = !searchBox.visible;
+
+  if (searchBox.visible) {
+    // Snap immediately to camera target
+    searchBox.position.copy(controls.target);
+  } else {
+    // Reset to instructions when hiding
+    if (selectionState) {
+      selectionState.points = "Press 'B' to toggle search box\nPress 'N' to analyze points";
+      if (selectionController) selectionController.updateDisplay();
+    }
+  }
+}
+
+
+function analyzePointsInBox(targetBox) {
+  const pointsInside = [];
+
+  // Build a Box3 in world space from the targetBox mesh
+  const box = new THREE.Box3().setFromObject(targetBox);
+
+
+colonyCloud.traverse(obj => {
+  if (obj.isPoints && obj.geometry && obj.geometry.attributes.position) {
+    const positions = obj.geometry.attributes.position;
+    const pos = new THREE.Vector3();
+
+    for (let i = 0; i < positions.count; i++) {
+      pos.fromBufferAttribute(positions, i);
+
+      // Convert to world coordinates
+      const worldPos = pos.clone();
+      obj.localToWorld(worldPos);
+
+      // Test against the world-space box
+      if (box.containsPoint(worldPos)) {
+        const meta = colonyMeta[i];   // <-- lookup by index
+        pointsInside.push({
+          id64: meta?.systemId64,
+          x: worldPos.z,
+          y: worldPos.y,
+          z: worldPos.x
+        });
+      }
+    }
+  }
+});
+
+  updateGuiWithPoints(pointsInside);
+}
+
+function updateGuiWithPoints(pointsInside) {
+  if (pointsInside.length === 0) {
+    selectionState.points = 'No points found';
+  } else {
+    selectionState.points = pointsInside
+      .map(p => `ID:${p.id64} (${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)})`)
+      .join('\n');
+  }
+  selectionController.updateDisplay();
+}
+
+
+function onClick(event) {
+  mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+  mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+  raycaster.setFromCamera(mouse, camera);
+  const intersects = raycaster.intersectObject(colonyCloud, true);
+
+  if (intersects.length > 0) {
+    const intersect = intersects[0];
+    const idx = intersect.index; // vertex index
+    const meta = colonyMeta[idx];
+
+  if (meta) {
+    selectionState.points = `ID:${meta.systemId64} (${intersect.point.x.toFixed(2)}, ${intersect.point.y.toFixed(2)}, ${intersect.point.z.toFixed(2)})`;
+    selectionController.updateDisplay();
+  }
+
+  }
+}
+
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  // Update marker to follow controls.target
+    targetMarker.position.copy(controls.target);
+
+    // Update line endpoints
+    if (targetLine) {
+      const pos = targetLine.geometry.attributes.position.array;
+
+      // Start at marker
+      pos[0] = targetMarker.position.x;
+      pos[1] = targetMarker.position.y;
+      pos[2] = targetMarker.position.z;
+
+      // End at Y=0 plane directly below
+      pos[3] = targetMarker.position.x;
+      pos[4] = 0;
+      pos[5] = targetMarker.position.z;
+
+      targetLine.geometry.attributes.position.needsUpdate = true;
+    }
+    
+    baseMarker.position.set(targetMarker.position.x, 0, targetMarker.position.z);
+
+    
+
+    // follow search box 
+    if (searchBox && searchBox.visible) {
+      searchBox.position.copy(controls.target);
+    }
+      const dist = camera.position.distanceTo(controls.target);
+
+      // For debugging in console
+      console.log('Camera → Target distance:', dist.toFixed(2));
+
+
+
+  renderer.render(scene, camera);
+}
+
+  animate();
+renderer.domElement.addEventListener("click", onClick);
+
+  
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+</script>
+</body>
+</html>
