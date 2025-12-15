@@ -1,0 +1,609 @@
+import * as THREE from './three.module.js';
+import { OrbitControls } from './OrbitControls.js';
+import GUI from './lil-gui.esm.js';
+import { loadGLTF, loader } from './loaders.js';
+import { applyPointMaterialSettings, createStarCloudMaterial, focusCameraOnObject, setPointSize, createTextSprite } from './utils.js';
+import { thicknessSteps, axisRanges, labels } from './constants.js';
+import { initGUIs } from './ui.js';
+
+export class App {
+  static scene = null;
+  static camera = null;
+  static renderer = null;
+  static controls = null;
+  static loader = loader;
+
+  // Data / state
+  static allegianceGroups = {};
+  static loadedCount = 0;
+  static isoFiles = [
+    { level: "1e-1", file: "KDEglb/iso_0.1_draco.glb" },
+    { level: "1e-2", file: "KDEglb/iso_0.01_draco.glb" },
+    { level: "1e-3", file: "KDEglb/iso_0.001_draco.glb" },
+    { level: "1e-4", file: "KDEglb/iso_0.0001_draco.glb" },
+    { level: "1e-5", file: "KDEglb/iso_1e-05_draco.glb" },
+    { level: "1e-6", file: "KDEglb/iso_1e-06_draco.glb" },
+    { level: "1e-7", file: "KDEglb/iso_1e-07_draco.glb" }
+  ];
+  static isoMeshes = [];
+  static isoGroup = null;
+  static currentIsoSlider = 0;
+  static isoLoadCount = 0;
+
+  // GUI / interactive state
+  // Selection UI removed for this application
+
+  static starCloud = null;
+  static starCloudControllers = [];
+
+  static colonyCloud = null;
+  static colonyCloudController = null;
+  static colonyMeta = [];
+
+  static galacticPlane = null;
+  static galacticPlaneControllers = [];
+  static galacticPlaneState = { opacity: 0.3, y: -5000 };
+
+  static heliumGroup = null;
+  static heliumController = null;
+  static heliumState = { opacity: 0.5, intensity: 1.0 };
+
+  static guardianGroup = null;
+  static guardianController = null;
+  static densityScanGroup = null;
+  static densityScanController = null;
+  static coloniesOpacity = 0.15;
+  static coloniesVisible = true;
+  static coloniesController = null;
+
+  static clipPlanes = [];
+  static clippingEnabled = false;
+  static clipController = null;
+  static clipState = { axis: 'x', center: 0, thicknessIndex: 0 };
+
+  static thicknessSteps = thicknessSteps;
+  static axisRanges = axisRanges;
+
+  static sprite_sphere = null;
+
+  static raycaster = new THREE.Raycaster();
+  static mouse = new THREE.Vector2();
+
+  static async init() {
+    // Scene, camera, renderer
+    this.scene = new THREE.Scene();
+    this.scene.background = new THREE.Color(0x111111);
+
+    const aspect = window.innerWidth / window.innerHeight;
+    this.camera = new THREE.PerspectiveCamera(75, aspect, 0.1, 120000);
+    this.camera.position.set(500, 4000, 4000);
+    this.camera.lookAt(0, 0, 0);
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.9);
+    this.scene.add(ambient);
+    const hemi = new THREE.HemisphereLight(0x88ccff, 0x222244, 0.8);
+    this.scene.add(hemi);
+    const directional = new THREE.DirectionalLight(0xffffff, 0.8);
+    directional.position.set(1, 1, 1);
+    this.scene.add(directional);
+
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(this.renderer.domElement);
+
+    this.controls = new OrbitControls(this.camera, this.renderer.domElement);
+    this.controls.enableDamping = true;
+    this.controls.target.set(0, 0, 0);
+    this.controls.update();
+
+    // Resize handler (single consolidated)
+    window.addEventListener('resize', () => {
+      this.camera.aspect = window.innerWidth / window.innerHeight;
+      this.camera.updateProjectionMatrix();
+      this.renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Sprite
+    this.sprite_sphere = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
+    this.sprite_sphere.colorSpace = THREE.SRGBColorSpace;
+
+    // Allegiance files
+    const allegianceFiles = [
+      { name: 'Empire',     url: './glbdata/vis_bubbleEmpire.gltf'},
+      { name: 'Federation', url: './glbdata/vis_bubbleFederation.gltf'},
+      { name: 'Alliance',   url: './glbdata/vis_bubbleAlliance.gltf'},
+      { name: 'Independent', url: './glbdata/vis_bubbleIndependent.gltf'},
+      { name: 'IGAU',       url: './glbdata/vis_bubbleIGAU.gltf'},
+      { name: 'Mikunn',     url: './glbdata/vis_bubbleMikunn.gltf'},
+      { name: 'Guardian',   url: './glbdata/vis_bubbleGuardian.gltf'},
+      { name: 'Thargoid',   url: './glbdata/vis_bubbleThargoid.gltf'},
+    ];
+
+    allegianceFiles.forEach(async ({ name, url }) => {
+      try {
+        const gltf = await loadGLTF(url);
+        const group = new THREE.Group();
+        group.add(gltf.scene);
+        // Skip adding the 'Guardian' allegiance group because it is a partial duplicate
+        if (name === 'Guardian') {
+          console.info('Skipping Guardian allegiance group (will remain unloaded)');
+          // Still count this file as loaded so GUI initialization proceeds
+          this.loadedCount++;
+          if (this.loadedCount === allegianceFiles.length) {
+            this.guiRefs = initGUIs(this);
+            // Ensure default mode UI is visible once GUIs are ready (start in Galaxy Visuals)
+            this.switchMode('Galaxy Visuals');
+            // Ensure Galactic Map is shown by default
+            try { if (!this.galacticPlane || !this.galacticPlane.visible) this.toggleGalacticPlane(); } catch (e) {}
+            // Sync allegiance groups visibility with initial coloniesVisible state
+            Object.values(this.allegianceGroups).forEach(g => { g.visible = this.coloniesVisible; });
+            if (this.coloniesController) {
+              try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
+            }
+            // Apply initial colonies opacity
+            if (this.setColoniesOpacity) this.setColoniesOpacity(this.coloniesOpacity);
+          }
+          return;
+        }
+        this.allegianceGroups[name] = group;
+        this.scene.add(group);
+        applyPointMaterialSettings(group, this.sprite_sphere);
+        this.loadedCount++;
+        if (this.loadedCount === allegianceFiles.length) {
+          this.guiRefs = initGUIs(this);
+          // Ensure default mode UI is visible once GUIs are ready (start in Galaxy Visuals)
+          this.switchMode('Galaxy Visuals');
+          // Ensure Galactic Map is shown by default
+          try { if (!this.galacticPlane || !this.galacticPlane.visible) this.toggleGalacticPlane(); } catch (e) {}
+          // Sync allegiance groups visibility with initial coloniesVisible state
+          Object.values(this.allegianceGroups).forEach(g => { g.visible = this.coloniesVisible; });
+          if (this.coloniesController) {
+            try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
+          }
+        }
+      } catch (err) {
+        console.error('Error loading', url, err);
+      }
+    });
+
+    // Iso, clip initial state
+    this.clipState.thicknessIndex = 0;
+
+    // Create minimal target marker, search box, target line
+    this.initTargetMarker();
+    this.initSearchBox();
+
+    // Setup click and keyboard handlers
+    this.renderer.domElement.addEventListener('click', (e) => this.onClick(e));
+    document.addEventListener('keydown', (e) => this.handleKeyDown(e), false);
+
+    // Start animation
+    this.animate();
+  }
+
+  static initTargetMarker() {
+    const targetMarkerGeometry = new THREE.SphereGeometry(5, 16, 16);
+    const targetMarkerMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    this.targetMarker = new THREE.Mesh(targetMarkerGeometry, targetMarkerMaterial);
+    this.scene.add(this.targetMarker);
+
+    const geom = new THREE.BufferGeometry();
+    const positions = new Float32Array(6);
+    geom.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const mat = new THREE.LineBasicMaterial({ color: 0x00ff00 });
+    this.targetLine = new THREE.Line(geom, mat);
+    this.scene.add(this.targetLine);
+
+    this.baseMarker = new THREE.Mesh(new THREE.CircleGeometry(5, 32), new THREE.MeshBasicMaterial({ color: 0x00ff00 }));
+    this.baseMarker.rotation.x = -Math.PI / 2;
+    this.scene.add(this.baseMarker);
+  }
+
+  static handleKeyDown(event) {
+    const moveDistance = 10;
+    const targetMoveDistance = 10;
+    switch (event.key) {
+      case 'w': this.camera.position.x -= moveDistance; this.controls.target.x -= targetMoveDistance; break;
+      case 's': this.camera.position.x += moveDistance; this.controls.target.x += targetMoveDistance; break;
+      case 'a': this.camera.position.z -= moveDistance; this.controls.target.z -= targetMoveDistance; break;
+      case 'd': this.camera.position.z += moveDistance; this.controls.target.z += targetMoveDistance; break;
+      case 'q': this.camera.position.y += moveDistance; this.controls.target.y += targetMoveDistance; break;
+      case 'e': this.camera.position.y -= moveDistance; this.controls.target.y -= targetMoveDistance; break;
+      case 'b': this.toggleSearchBox(); break;
+      case 'n': if (this.searchBox && this.searchBox.visible) this.analyzePointsInBox(this.searchBox); break;
+    }
+    this.controls.update();
+  }
+
+  static initSearchBox() {
+    const boxGeometry = new THREE.BoxGeometry(100, 100, 100);
+    const boxMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+    this.searchBox = new THREE.Mesh(boxGeometry, boxMaterial);
+    this.searchBox.visible = false;
+    this.scene.add(this.searchBox);
+    this.searchBox.geometry.computeBoundingBox();
+  }
+
+  static toggleSearchBox() {
+    if (!this.searchBox) return;
+    this.searchBox.visible = !this.searchBox.visible;
+    if (this.searchBox.visible) this.searchBox.position.copy(this.controls.target);
+  }
+
+  static analyzePointsInBox(targetBox) {
+    const pointsInside = [];
+    const box = new THREE.Box3().setFromObject(targetBox);
+    if (!this.colonyCloud) return this.updateGuiWithPoints([]);
+    this.colonyCloud.traverse(obj => {
+      if (obj.isPoints && obj.geometry && obj.geometry.attributes.position) {
+        const positions = obj.geometry.attributes.position;
+        const pos = new THREE.Vector3();
+        for (let i = 0; i < positions.count; i++) {
+          pos.fromBufferAttribute(positions, i);
+          const worldPos = pos.clone();
+          obj.localToWorld(worldPos);
+          if (box.containsPoint(worldPos)) {
+            const meta = this.colonyMeta[i];
+            pointsInside.push({ id64: meta?.systemId64, x: worldPos.z, y: worldPos.y, z: worldPos.x });
+          }
+        }
+      }
+    });
+    // Points found - no selection UI in this application, so we don't display them
+  }
+
+  static updateGuiWithPoints(pointsInside) {
+    // intentionally no-op (selection UI removed)
+  }
+
+  static onClick(event) {
+    this.mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    this.mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    this.raycaster.setFromCamera(this.mouse, this.camera);
+    if (!this.colonyCloud) return;
+    const intersects = this.raycaster.intersectObject(this.colonyCloud, true);
+    if (intersects.length > 0) {
+      const intersect = intersects[0];
+      const idx = intersect.index;
+      const meta = this.colonyMeta[idx];
+      if (meta) {
+        // selection UI removed; no UI update required for clicked colony
+        console.info('Colony clicked:', meta.systemId64);
+      }
+    }
+  }
+
+  static animate() {
+    requestAnimationFrame(() => this.animate());
+    this.controls.update();
+    this.targetMarker.position.copy(this.controls.target);
+    if (this.targetLine) {
+      const pos = this.targetLine.geometry.attributes.position.array;
+      pos[0] = this.targetMarker.position.x; pos[1] = this.targetMarker.position.y; pos[2] = this.targetMarker.position.z;
+      pos[3] = this.targetMarker.position.x; pos[4] = 0; pos[5] = this.targetMarker.position.z;
+      this.targetLine.geometry.attributes.position.needsUpdate = true;
+    }
+    this.baseMarker.position.set(this.targetMarker.position.x, 0, this.targetMarker.position.z);
+    if (this.searchBox && this.searchBox.visible) this.searchBox.position.copy(this.controls.target);
+    this.renderer.render(this.scene, this.camera);
+  }
+
+  // ---- Feature toggles moved across from index.html ----
+  static async toggleStarCloud() {
+    if (!this.starCloud) {
+      try {
+        const gltf = await loadGLTF('./star_cloud.glb');
+        this.starCloud = gltf.scene;
+        this.starCloud.traverse((obj) => { if (obj.isPoints) obj.material = createStarCloudMaterial(this.camera, { sizeNear: 6, sizeFar: 0.05, opacityNear: 0.8, opacityFar: 0.02, biasPower: 1.5 }); });
+        this.scene.add(this.starCloud);
+        this.starCloud.visible = true;
+          this.starCloudControllers.forEach(c => { try { c.name('Hide Star Cloud'); } catch(e){} });
+      } catch (err) { console.error('Star cloud load failed', err); }
+    } else {
+      this.starCloud.visible = !this.starCloud.visible;
+        this.starCloudControllers.forEach(c => { try { c.name(this.starCloud.visible ? 'Hide Star Cloud' : 'Show Star Cloud'); } catch(e){} });
+    }
+  }
+
+  static async toggleColonyCloud() {
+    if (!this.colonyCloud) {
+      try {
+        const metaRes = await fetch('./colonytargetCloud_meta.json');
+        this.colonyMeta = await metaRes.json();
+        const gltf = await loadGLTF('./colonytargetCloud.glb');
+        this.colonyCloud = gltf.scene;
+        this.colonyCloud.traverse((obj) => {
+          if (obj.isPoints) obj.material = createStarCloudMaterial(this.camera, { sizeNear: 12, sizeFar: 0.1, opacityNear: 1.0, opacityFar: 0.05, biasPower: 2.0 });
+        });
+        this.scene.add(this.colonyCloud);
+        this.colonyCloud.visible = true;
+        setPointSize(this.colonyCloud, 14.0);
+        focusCameraOnObject(this.camera, this.controls, this.colonyCloud);
+        if (this.colonyCloudController) this.colonyCloudController.name('Hide Colony Targets');
+      } catch (err) { console.error('Colony load failed', err); }
+    } else {
+      this.colonyCloud.visible = !this.colonyCloud.visible;
+      setPointSize(this.colonyCloud, this.colonyCloud.visible ? 14.0 : 5.0);
+      if (this.colonyCloudController) this.colonyCloudController.name(this.colonyCloud.visible ? 'Hide Colony Targets' : 'Show Colony Targets');
+    }
+  }
+
+  static toggleColonizedSystems() {
+    this.coloniesVisible = !this.coloniesVisible;
+    Object.values(this.allegianceGroups).forEach(g => { g.visible = this.coloniesVisible; });
+    if (this.coloniesController) {
+      try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
+    }
+    // Show or hide the Visible Step slider based on colonies visibility
+    if (this.visibleStepController && this.visibleStepController.domElement) {
+      try { this.visibleStepController.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
+    }
+    // Show or hide the Colonies Opacity slider as well
+    if (this.coloniesOpacityController && this.coloniesOpacityController.domElement) {
+      try { this.coloniesOpacityController.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
+    }
+  }
+
+  static setColoniesOpacity(val) {
+    this.coloniesOpacity = val;
+    Object.values(this.allegianceGroups).forEach(group => {
+      group.traverse(obj => {
+        if (obj.material) {
+          try { obj.material.opacity = val; obj.material.transparent = val < 1.0; } catch (e) {}
+        }
+      });
+    });
+    if (this.coloniesOpacityController) {
+      try { this.coloniesOpacityController.setValue(val); } catch (e) {}
+    }
+  }
+
+  static toggleGalacticPlane() {
+    if (!this.galacticPlane) {
+      const width = 90000; const height = 90000;
+      const groundGeometry = new THREE.PlaneGeometry(width, height, 1, 1);
+      const textureLoader = new THREE.TextureLoader();
+      const groundTexture = textureLoader.load('./galaxyscience/gamegalaxy-4500px.png');
+      const groundMaterial = new THREE.MeshBasicMaterial({ map: groundTexture, transparent: true, opacity: this.galacticPlaneState.opacity, side: THREE.DoubleSide });
+      this.galacticPlane = new THREE.Mesh(groundGeometry, groundMaterial);
+      this.galacticPlane.rotation.x = -Math.PI / 2; this.galacticPlane.rotation.z = -Math.PI / 2;
+      this.galacticPlane.position.set(25000, this.galacticPlaneState.y, 0);
+      this.scene.add(this.galacticPlane);
+        this.galacticPlaneControllers.forEach(c => { try { c.name('Hide Galactic Map'); } catch(e){} });
+      // show galactic map controls
+      if (this.galacticOpacityControllers) this.galacticOpacityControllers.forEach(ctrl => { try { ctrl.domElement.style.display = ''; } catch (e) {} });
+      if (this.galacticYControllers) this.galacticYControllers.forEach(ctrl => { try { ctrl.domElement.style.display = ''; } catch (e) {} });
+    } else {
+      this.galacticPlane.visible = !this.galacticPlane.visible;
+      if (this.galacticPlaneController) this.galacticPlaneController.name(this.galacticPlane.visible ? 'Hide Galactic Plane' : 'Show Galactic Plane');
+        this.galacticPlaneControllers.forEach(c => { try { c.name(this.galacticPlane.visible ? 'Hide Galactic Map' : 'Show Galactic Map'); } catch(e){} });
+      // toggle galactic map controls visibility
+      if (this.galacticOpacityControllers) this.galacticOpacityControllers.forEach(ctrl => { try { ctrl.domElement.style.display = this.galacticPlane.visible ? '' : 'none'; } catch (e) {} });
+      if (this.galacticYControllers) this.galacticYControllers.forEach(ctrl => { try { ctrl.domElement.style.display = this.galacticPlane.visible ? '' : 'none'; } catch (e) {} });
+    }
+  }
+
+  static async toggleHeliumCloud() {
+    if (!this.heliumGroup) {
+      try {
+        // Prevent double-trigger while load is in progress
+        if (this.heliumController) {
+          try { const btn = this.heliumController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading Helium Levels...'; } } catch (e) {}
+        }
+        const gltf = await loadGLTF('./galaxyscience/helium_levels.glb');
+        const model = gltf.scene;
+        const He_groups = [[],[],[],[],[],[],[]];
+        let guardian_ruins = [], guardian_structures = [], guardian_beacons = [], guardian_connector = [];
+        model.traverse((child) => {
+          if (child.isMesh || child.type === 'Points') {
+            switch (child.name) {
+              case 'mesh0': He_groups[0].push(child); break;
+              case 'mesh1': He_groups[1].push(child); break;
+              case 'mesh2': He_groups[2].push(child); break;
+              case 'mesh3': He_groups[3].push(child); break;
+              case 'mesh4': He_groups[4].push(child); break;
+              case 'mesh5': He_groups[5].push(child); break;
+              case 'mesh6': He_groups[6].push(child); break;
+              case 'mesh7': guardian_ruins.push(child); break;
+              case 'mesh8': guardian_structures.push(child); break;
+              case 'mesh9': guardian_beacons.push(child); break;
+              case 'mesh10': break;
+              case 'mesh11': guardian_connector.push(child); break;
+            }
+          }
+        });
+        this.heliumGroup = new THREE.Group(); this.heliumGroup.name = 'He_mass_group';
+        He_groups.forEach(arr => arr.forEach(mesh => this.heliumGroup.add(mesh)));
+        this.heliumGroup.traverse(obj => {
+          if (obj.isMesh && obj.geometry && obj.geometry.attributes.color) {
+            const colors = obj.geometry.attributes.color;
+            const orig = new Float32Array(colors.count * 3);
+            for (let i = 0; i < colors.count; i++) { orig[i*3] = colors.getX(i); orig[i*3+1] = colors.getY(i); orig[i*3+2] = colors.getZ(i); }
+            obj.userData.originalColors = orig;
+          }
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.heliumState.opacity; obj.material.blending = THREE.AdditiveBlending; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.heliumGroup);
+        // Update helium UI controller label and re-enable button
+        if (this.heliumController) {
+          try { this.heliumController.name('Hide Helium Levels'); const btn = this.heliumController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show helium controls (opacity/color) now that helium data is available
+        if (this.heliumOpacityController && this.heliumOpacityController.domElement) { try { this.heliumOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.heliumColorController && this.heliumColorController.domElement) { try { this.heliumColorController.domElement.style.display = ''; } catch (e) {} }
+        // guardian group
+        this.guardianGroup = new THREE.Group();
+        [...guardian_ruins, ...guardian_structures, ...guardian_beacons, ...guardian_connector].forEach(mesh => this.guardianGroup.add(mesh));
+        this.scene.add(this.guardianGroup);
+        // If UI has a guardian controller, enable it now that guardianGroup is present
+        if (this.guardianController) {
+          try {
+            const btn = this.guardianController.domElement.querySelector('button');
+            if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.title = ''; }
+            this.guardianController.name(this.guardianGroup.visible ? 'Hide Guardian Sites' : 'Show Guardian Sites');
+          } catch (e) { /* ignore UI update errors */ }
+        }
+      } catch (err) { console.error('Helium load failed', err); }
+    } else {
+      this.heliumGroup.visible = !this.heliumGroup.visible;
+      if (this.heliumController) this.heliumController.name(this.heliumGroup.visible ? 'Hide Helium Levels' : 'Show Helium Levels');
+      // Also show/hide helium controls
+      if (this.heliumOpacityController && this.heliumOpacityController.domElement) { try { this.heliumOpacityController.domElement.style.display = this.heliumGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.heliumColorController && this.heliumColorController.domElement) { try { this.heliumColorController.domElement.style.display = this.heliumGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static adjustVertexColors(obj, factor) {
+    const colors = obj.geometry.attributes.color;
+    const orig = obj.userData.originalColors;
+    const t = factor - 1;
+    for (let i = 0; i < colors.count; i++) {
+      let r = orig[i*3]; let g = orig[i*3+1]; let b = orig[i*3+2];
+      if (r > b) { r = THREE.MathUtils.lerp(r, 1.0, t); g = THREE.MathUtils.lerp(g, 0.0, t); b = THREE.MathUtils.lerp(b, 0.0, t); }
+      else if (b > r) { r = THREE.MathUtils.lerp(r, 0.0, t); g = THREE.MathUtils.lerp(g, 0.0, t); b = THREE.MathUtils.lerp(b, 1.0, t); }
+      colors.setXYZ(i, r, g, b);
+    }
+    colors.needsUpdate = true;
+  }
+
+  static toggleGuardianSites() {
+    if (!this.guardianGroup) { console.warn('Guardian Sites not yet loaded'); return; }
+    this.guardianGroup.visible = !this.guardianGroup.visible;
+    if (this.guardianController) this.guardianController.name(this.guardianGroup.visible ? 'Hide Guardian Sites' : 'Show Guardian Sites');
+  }
+
+  static async toggledensityscanCloud() {
+    if (!this.densityScanGroup) {
+      // first-time load: try to load a density_scans GLB, otherwise create placeholder
+      if (this.densityScanController) {
+        try { const btn = this.densityScanController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading density scans...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./DW3/scans.glb');
+        this.densityScanGroup = gltf.scene;
+        this.scene.add(this.densityScanGroup);
+      } catch (err) {
+        console.warn('density_scans GLB not found; creating placeholder.', err);
+        const group = new THREE.Group();
+        const geom = new THREE.SphereGeometry(5000, 16, 12);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x6666ff, wireframe: true, opacity: 0.25, transparent: true });
+        const mesh = new THREE.Mesh(geom, mat);
+        mesh.name = 'density_placeholder';
+        group.add(mesh);
+        this.scene.add(group);
+        this.densityScanGroup = group;
+      } finally {
+        if (this.densityScanController) {
+          try { this.densityScanController.name('Hide Density Scans'); const btn = this.densityScanController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+      }
+    } else {
+      this.densityScanGroup.visible = !this.densityScanGroup.visible;
+      if (this.densityScanController) this.densityScanController.name(this.densityScanGroup.visible ? 'Hide Density Scans' : 'Show Density Scans');
+    }
+  }
+
+  static toggleIsoGroup() {
+    if (!this.isoGroup) {
+      // Start loading iso GLBs once; disable the UI button while loading
+      if (this.isoController) {
+        try { const btn = this.isoController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IsoLevels...'; } } catch (e) {}
+      }
+      this.isoGroup = new THREE.Group(); this.scene.add(this.isoGroup);
+      this.isoLoadCount = 0;
+      this.isoFiles.forEach((iso, idx) => {
+        loadGLTF(iso.file).then((gltf) => {
+          const mesh = gltf.scene; mesh.visible = false; this.isoGroup.add(mesh); this.isoMeshes[idx] = mesh; this.styleSingleIsoMesh(mesh, idx, this.isoFiles.length);
+          // Apply current slider visibility to this newly-loaded mesh
+          mesh.visible = (idx < (this.currentIsoSlider || 0));
+          this.isoLoadCount++;
+          if (this.isoLoadCount === this.isoFiles.length) {
+            // All iso levels loaded
+            if (this.isoController) {
+              try { this.isoController.name('Hide IsoLevels'); const btn = this.isoController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+            }
+            // Ensure clipping planes are applied if enabled
+            if (this.clippingEnabled) this.applyClippingPlanes();
+          }
+        }).catch((err) => { console.error('Iso load failed', err); });
+      });
+      // Show the group container (individual meshes will show per slider)
+      this.isoGroup.visible = true;
+      // show iso slider when iso group is visible
+      if (this.isoSliderController && this.isoSliderController.domElement) { try { this.isoSliderController.domElement.style.display = ''; } catch (e) {} }
+    } else {
+      this.isoGroup.visible = !this.isoGroup.visible;
+      if (this.isoController) this.isoController.name(this.isoGroup.visible ? 'Hide IsoLevels' : 'Show IsoLevels');
+      if (this.isoSliderController && this.isoSliderController.domElement) { try { this.isoSliderController.domElement.style.display = this.isoGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static setIsoVisibility(val) {
+    this.currentIsoSlider = val;
+    this.isoMeshes.forEach((m, i) => { if (m) m.visible = (i < val); });
+  }
+
+  static styleSingleIsoMesh(mesh, idx, total) {
+    const t = 1 - (idx / (total - 1));
+    const opacity = 0.15 + 0.5 * t;
+    const hue = 0.6 - 0.6 * t;
+    const color = new THREE.Color().setHSL(hue, 1.0, 0.5);
+    mesh.traverse(obj => { if (obj.isMesh) { obj.material = new THREE.MeshStandardMaterial({ color: color, transparent: true, opacity: opacity, depthWrite: false, side: THREE.DoubleSide }); } });
+  }
+
+  static applyClippingPlanes() {
+    if (!this.clippingEnabled) return;
+    const { axis, center, thicknessIndex } = this.clipState;
+    const thickness = this.thicknessSteps[thicknessIndex] ?? this.thicknessSteps[0];
+    const half = thickness / 2;
+    let normal = new THREE.Vector3(1,0,0);
+    if (axis === 'y') normal.set(0,1,0); else if (axis === 'z') normal.set(0,0,1);
+    const minVal = center - half; const maxVal = center + half;
+    const planeMin = new THREE.Plane(normal.clone(), -minVal); const planeMax = new THREE.Plane(normal.clone().negate(), maxVal);
+    this.clipPlanes = [planeMin, planeMax];
+    this.isoMeshes.forEach(m => { if (!m) return; m.traverse(obj => { if (obj.isMesh && obj.material) { obj.material.clippingPlanes = this.clipPlanes; obj.material.clipShadows = true; } }); });
+  }
+
+  static toggleClippingSlab() {
+    if (!this.clippingEnabled) {
+      this.renderer.localClippingEnabled = true; this.clippingEnabled = true; this.applyClippingPlanes(); if (this.clipController) this.clipController.name('Disable Clipping Slab');
+      // show clipping child controls
+      if (this.centerController && this.centerController.domElement) { try { this.centerController.domElement.style.display = ''; } catch (e) {} }
+      if (this.thicknessController && this.thicknessController.domElement) { try { this.thicknessController.domElement.style.display = ''; } catch (e) {} }
+      if (this.clipAxisController && this.clipAxisController.domElement) { try { this.clipAxisController.domElement.style.display = ''; } catch (e) {} }
+    } else {
+      this.renderer.localClippingEnabled = false; this.isoMeshes.forEach(m => { if (!m) return; m.traverse(obj => { if (obj.isMesh && obj.material) obj.material.clippingPlanes = []; }); }); this.clippingEnabled = false; if (this.clipController) this.clipController.name('Enable Clipping Slab');
+      // hide clipping child controls
+      if (this.centerController && this.centerController.domElement) { try { this.centerController.domElement.style.display = 'none'; } catch (e) {} }
+      if (this.thicknessController && this.thicknessController.domElement) { try { this.thicknessController.domElement.style.display = 'none'; } catch (e) {} }
+      if (this.clipAxisController && this.clipAxisController.domElement) { try { this.clipAxisController.domElement.style.display = 'none'; } catch (e) {} }
+    }
+  }
+
+  static switchMode(mode) {
+    // Show or hide per-mode GUI folders returned from initGUIs
+    if (!this.guiRefs) return;
+    const { expeditionGUI, propertiesGUI, densityGUI, galaxyGUI, earthGUI } = this.guiRefs;
+    // Hide all first
+    try { if (expeditionGUI) expeditionGUI.hide(); } catch (e) {}
+    try { if (propertiesGUI) propertiesGUI.hide(); } catch (e) {}
+    try { if (densityGUI) densityGUI.hide(); } catch (e) {}
+    try { if (galaxyGUI) galaxyGUI.hide(); } catch (e) {}
+    try { if (earthGUI) earthGUI.hide(); } catch (e) {}
+    if (this.reportGUIMode) this.reportGUIMode(null);
+
+    // Show selected
+    if (mode === 'Expedition Waypoints') { if (expeditionGUI) { expeditionGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Expedition Waypoints'); } this.focusCameraOnColonization(); this.loadModeAssets('colonization'); }
+    else if (mode === 'Stellar Properties') { if (propertiesGUI) { propertiesGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Properties'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
+    else if (mode === 'Stellar Density') { if (densityGUI) { densityGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Density'); } this.focusCameraOnDW3(); this.loadModeAssets('dw3'); }
+    else if (mode === 'Galaxy Visuals') { if (galaxyGUI) { galaxyGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Galaxy Visuals'); } this.focusCameraOnScience(); this.loadModeAssets('science'); }
+    else if (mode === 'Earth Like Worlds') { if (earthGUI) { earthGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Earth Like Worlds'); } }
+  }
+
+  static focusCameraOnColonization() { /* small stub to be implemented further */ }
+  static focusCameraOnIGAU() {}
+  static focusCameraOnDW3() {}
+  static focusCameraOnScience() {}
+  static loadModeAssets() {}
+
+}
