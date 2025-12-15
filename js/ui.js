@@ -17,6 +17,16 @@ export function initGUIs(app) {
     const scCtrl = gui.add({ toggleStarCloud: () => app.toggleStarCloud() }, 'toggleStarCloud').name('Show Star Cloud');
     if (!app.starCloudControllers) app.starCloudControllers = [];
     app.starCloudControllers.push(scCtrl);
+    // Linear star cloud opacity (0..1)
+    const scOpacityState = { value: app.starCloudOpacitySlider ?? 0.4 };
+    const scOpacityCtrl = gui.add(scOpacityState, 'value', 0, 1, 0.01)
+      .name('Star Cloud Opacity')
+      .onChange((val) => {
+        if (app.setStarCloudOpacity) app.setStarCloudOpacity(val);
+        app.starCloudOpacitySlider = val;
+      });
+    if (!app.starCloudOpacityControllers) app.starCloudOpacityControllers = [];
+    app.starCloudOpacityControllers.push(scOpacityCtrl);
     // Opacity and Y position linked to central state (placed after the two top toggles)
     const gpOpacityCtrl = gui.add(app.galacticPlaneState, 'opacity', 0, 1, 0.01)
       .name('Galaxy Map Opacity')

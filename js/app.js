@@ -35,6 +35,9 @@ export class App {
 
   static starCloud = null;
   static starCloudControllers = [];
+  static starCloudMaterials = [];
+  static starCloudBaseOpacity = { near: 0.8, far: 0.02 };
+  static starCloudOpacitySlider = 0.4; // linear 0-1
 
   static colonyCloud = null;
   static colonyCloudController = null;
@@ -294,7 +297,21 @@ export class App {
       try {
         const gltf = await loadGLTF('./star_cloud.glb');
         this.starCloud = gltf.scene;
-        this.starCloud.traverse((obj) => { if (obj.isPoints) obj.material = createStarCloudMaterial(this.camera, { sizeNear: 6, sizeFar: 0.05, opacityNear: 0.8, opacityFar: 0.02, biasPower: 1.5 }); });
+        this.starCloud.traverse((obj) => {
+          if (obj.isPoints) {
+            const mat = createStarCloudMaterial(this.camera, {
+              sizeNear: 6,
+              sizeFar: 0.05,
+              opacityNear: this.starCloudBaseOpacity.near,
+              opacityFar: this.starCloudBaseOpacity.far,
+              biasPower: 1.5
+            });
+            obj.material = mat;
+            this.starCloudMaterials.push(mat);
+          }
+        });
+        // Apply current slider-driven opacity to the new materials
+        this.setStarCloudOpacity(this.starCloudOpacitySlider);
         this.scene.add(this.starCloud);
         this.starCloud.visible = true;
           this.starCloudControllers.forEach(c => { try { c.name('Hide Star Cloud'); } catch(e){} });
@@ -303,6 +320,23 @@ export class App {
       this.starCloud.visible = !this.starCloud.visible;
         this.starCloudControllers.forEach(c => { try { c.name(this.starCloud.visible ? 'Hide Star Cloud' : 'Show Star Cloud'); } catch(e){} });
     }
+  }
+
+  static setStarCloudOpacity(val) {
+    // Linear scaling 0..1 applied to base near/far opacities
+    this.starCloudOpacitySlider = val;
+    const factor = Math.max(0, Math.min(1, val));
+    const near = this.starCloudBaseOpacity.near * factor;
+    const far = this.starCloudBaseOpacity.far * factor;
+    this.starCloudMaterials.forEach((mat) => {
+      if (mat && mat.uniforms) {
+        if (mat.uniforms.uOpacityNear) mat.uniforms.uOpacityNear.value = near;
+        if (mat.uniforms.uOpacityFar) mat.uniforms.uOpacityFar.value = far;
+      } else if (mat && typeof mat.opacity === 'number') {
+        mat.opacity = near;
+        mat.needsUpdate = true;
+      }
+    });
   }
 
   static async toggleColonyCloud() {
