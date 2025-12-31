@@ -13,11 +13,30 @@ export function initGUIs(app) {
     const gpCtrl = gui.add({ toggleGalacticPlane: () => app.toggleGalacticPlane() }, 'toggleGalacticPlane').name('Show Galactic Map');
     if (!app.galacticPlaneControllers) app.galacticPlaneControllers = [];
     app.galacticPlaneControllers.push(gpCtrl);
-    // Show Star Cloud (placed second so the top two items are Map then Star Cloud)
+    
+    // Galaxy Map Opacity (directly below Show Galactic Map)
+    const gpOpacityCtrl = gui.add(app.galacticPlaneState, 'opacity', 0, 1, 0.01)
+      .name('Galaxy Map Opacity')
+      .onChange((val) => { if (app.galacticPlane) { app.galacticPlane.material.opacity = val; app.galacticPlane.material.transparent = true; } });
+    
+    // Galaxy Map Y Position (directly below Galaxy Map Opacity)
+    const gpYCtrl = gui.add(app.galacticPlaneState, 'y', -20000, 20000, 20)
+      .name('Galaxy Map Y Position')
+      .onChange((val) => { if (app.galacticPlane) app.galacticPlane.position.y = val; });
+    
+    // Track controllers so we can show/hide them with the galactic plane toggle
+    if (!app.galacticOpacityControllers) app.galacticOpacityControllers = [];
+    if (!app.galacticYControllers) app.galacticYControllers = [];
+    app.galacticOpacityControllers.push(gpOpacityCtrl);
+    app.galacticYControllers.push(gpYCtrl);
+    try { if (!app.galacticPlane || !app.galacticPlane.visible) { gpOpacityCtrl.domElement.style.display = 'none'; gpYCtrl.domElement.style.display = 'none'; } } catch (e) {};
+    
+    // Show Star Cloud (after all Galactic Map controls)
     const scCtrl = gui.add({ toggleStarCloud: () => app.toggleStarCloud() }, 'toggleStarCloud').name('Show Star Cloud');
     if (!app.starCloudControllers) app.starCloudControllers = [];
     app.starCloudControllers.push(scCtrl);
-    // Linear star cloud opacity (0..1)
+    
+    // Star Cloud Opacity (directly below Show Star Cloud)
     const scOpacityState = { value: app.starCloudOpacitySlider ?? 0.4 };
     const scOpacityCtrl = gui.add(scOpacityState, 'value', 0, 1, 0.01)
       .name('Star Cloud Opacity')
@@ -27,19 +46,6 @@ export function initGUIs(app) {
       });
     if (!app.starCloudOpacityControllers) app.starCloudOpacityControllers = [];
     app.starCloudOpacityControllers.push(scOpacityCtrl);
-    // Opacity and Y position linked to central state (placed after the two top toggles)
-    const gpOpacityCtrl = gui.add(app.galacticPlaneState, 'opacity', 0, 1, 0.01)
-      .name('Galaxy Map Opacity')
-      .onChange((val) => { if (app.galacticPlane) { app.galacticPlane.material.opacity = val; app.galacticPlane.material.transparent = true; } });
-    const gpYCtrl = gui.add(app.galacticPlaneState, 'y', -20000, 20000, 20)
-      .name('Galaxy Map Y Position')
-      .onChange((val) => { if (app.galacticPlane) app.galacticPlane.position.y = val; });
-    // Track controllers so we can show/hide them with the galactic plane toggle
-    if (!app.galacticOpacityControllers) app.galacticOpacityControllers = [];
-    if (!app.galacticYControllers) app.galacticYControllers = [];
-    app.galacticOpacityControllers.push(gpOpacityCtrl);
-    app.galacticYControllers.push(gpYCtrl);
-    try { if (!app.galacticPlane || !app.galacticPlane.visible) { gpOpacityCtrl.domElement.style.display = 'none'; gpYCtrl.domElement.style.display = 'none'; } } catch (e) {};
   }
 
   const modeGUI = new GUI({ width: 300 });
@@ -205,7 +211,7 @@ Everyone who contributes data`
 
 
 
-  // Stellar Properties GUI (placeholder)
+  // Stellar Properties GUI
   const propertiesGUI = new GUI({ width: 300 });
   propertiesGUI.domElement.style.top = subGuiTop;
   propertiesGUI.domElement.style.left = subGuiLeft;
@@ -218,6 +224,191 @@ Everyone who contributes data`
   propertiesGUI.domElement.prepend(propertiesHeader);
   propertiesGUI.hide();
   addSharedControls(propertiesGUI);
+
+  // H Mass controls
+  const hMassController = propertiesGUI
+    .add({ toggleHMass: () => app.toggleHMass() }, 'toggleHMass')
+    .name('Show H Mass');
+  app.hMassController = hMassController;
+
+  const hMassOpacityCtrl = propertiesGUI.add(app.hMassState, 'opacity', 0, 1, 0.01)
+    .name('H Mass Opacity')
+    .onChange((val) => {
+      if (app.hMassGroup) {
+        app.hMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.hMassOpacityController = hMassOpacityCtrl;
+  try { if (!app.hMassGroup) hMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const hMassColorCtrl = propertiesGUI.add(app.hMassState, 'colorTemp', 0, 1, 0.01)
+    .name('H Mass Color Temp')
+    .onChange((val) => {
+      if (app.hMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.hMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.hMassColorController = hMassColorCtrl;
+  try { if (!app.hMassGroup) hMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // G Mass controls
+  const gMassController = propertiesGUI
+    .add({ toggleGMass: () => app.toggleGMass() }, 'toggleGMass')
+    .name('Show G Mass');
+  app.gMassController = gMassController;
+
+  const gMassOpacityCtrl = propertiesGUI.add(app.gMassState, 'opacity', 0, 1, 0.01)
+    .name('G Mass Opacity')
+    .onChange((val) => {
+      if (app.gMassGroup) {
+        app.gMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.gMassOpacityController = gMassOpacityCtrl;
+  try { if (!app.gMassGroup) gMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const gMassColorCtrl = propertiesGUI.add(app.gMassState, 'colorTemp', 0, 1, 0.01)
+    .name('G Mass Color Temp')
+    .onChange((val) => {
+      if (app.gMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.gMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.gMassColorController = gMassColorCtrl;
+  try { if (!app.gMassGroup) gMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // F Mass controls
+  const fMassController = propertiesGUI
+    .add({ toggleFMass: () => app.toggleFMass() }, 'toggleFMass')
+    .name('Show F Mass');
+  app.fMassController = fMassController;
+
+  const fMassOpacityCtrl = propertiesGUI.add(app.fMassState, 'opacity', 0, 1, 0.01)
+    .name('F Mass Opacity')
+    .onChange((val) => {
+      if (app.fMassGroup) {
+        app.fMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.fMassOpacityController = fMassOpacityCtrl;
+  try { if (!app.fMassGroup) fMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const fMassColorCtrl = propertiesGUI.add(app.fMassState, 'colorTemp', 0, 1, 0.01)
+    .name('F Mass Color Temp')
+    .onChange((val) => {
+      if (app.fMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.fMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.fMassColorController = fMassColorCtrl;
+  try { if (!app.fMassGroup) fMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // E Mass controls
+  const eMassController = propertiesGUI
+    .add({ toggleEMass: () => app.toggleEMass() }, 'toggleEMass')
+    .name('Show E Mass');
+  app.eMassController = eMassController;
+
+  const eMassOpacityCtrl = propertiesGUI.add(app.eMassState, 'opacity', 0, 1, 0.01)
+    .name('E Mass Opacity')
+    .onChange((val) => {
+      if (app.eMassGroup) {
+        app.eMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.eMassOpacityController = eMassOpacityCtrl;
+  try { if (!app.eMassGroup) eMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const eMassColorCtrl = propertiesGUI.add(app.eMassState, 'colorTemp', 0, 1, 0.01)
+    .name('E Mass Color Temp')
+    .onChange((val) => {
+      if (app.eMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.eMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.eMassColorController = eMassColorCtrl;
+  try { if (!app.eMassGroup) eMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // Wolf Rayet controls
+  const wolfRayetController = propertiesGUI
+    .add({ toggleWolfRayet: () => app.toggleWolfRayet() }, 'toggleWolfRayet')
+    .name('Show Wolf Rayet');
+  app.wolfRayetController = wolfRayetController;
+
+  const wolfRayetOpacityCtrl = propertiesGUI.add(app.wolfRayetState, 'opacity', 0, 1, 0.01)
+    .name('Wolf Rayet Opacity')
+    .onChange((val) => {
+      if (app.wolfRayetGroup) {
+        app.wolfRayetGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.wolfRayetOpacityController = wolfRayetOpacityCtrl;
+  try { if (!app.wolfRayetGroup) wolfRayetOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const wolfRayetColorCtrl = propertiesGUI.add(app.wolfRayetState, 'colorTemp', 0, 1, 0.01)
+    .name('Wolf Rayet Color Temp')
+    .onChange((val) => {
+      if (app.wolfRayetGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.wolfRayetGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.wolfRayetColorController = wolfRayetColorCtrl;
+  try { if (!app.wolfRayetGroup) wolfRayetColorCtrl.domElement.style.display = 'none'; } catch (e) {}
 
   // Stellar Density GUI
   const densityGUI = new GUI({ width: 300 });
@@ -361,21 +552,22 @@ Everyone who contributes data`
     return legacy;
   }
 
-  const state = { step: 44 };
-  const visibleStepController = galaxyGUI.add(state, 'step', 0, 44, 1)
-    .name('Visible Step')
-    .onChange((val) => {
-      Object.values(app.allegianceGroups).forEach((group) => {
-        if (!group.visible) return;
-        const meshes = [];
-        group.traverse((obj) => { if (obj.isPoints) meshes.push(obj); });
-        meshes.sort((a, b) => a.name.localeCompare(b.name));
-        meshes.forEach((m, i) => { m.visible = (i === 0) || (i <= val); });
-      });
-    });
-  app.visibleStepController = visibleStepController;
-  // Hide the Visible Step control if colonies are initially hidden
-  try { if (!app.coloniesVisible) visibleStepController.domElement.style.display = 'none'; } catch (e) {}
+  // Visible Step slider - COMMENTED OUT - time-based aspect lost in GLTF creation
+  // const state = { step: 44 };
+  // const visibleStepController = galaxyGUI.add(state, 'step', 0, 44, 1)
+  //   .name('Visible Step')
+  //   .onChange((val) => {
+  //     Object.values(app.allegianceGroups).forEach((group) => {
+  //       if (!group.visible) return;
+  //       const meshes = [];
+  //       group.traverse((obj) => { if (obj.isPoints) meshes.push(obj); });
+  //       meshes.sort((a, b) => a.name.localeCompare(b.name));
+  //       meshes.forEach((m, i) => { m.visible = (i === 0) || (i <= val); });
+  //     });
+  //   });
+  // app.visibleStepController = visibleStepController;
+  // // Hide the Visible Step control if colonies are initially hidden
+  // try { if (!app.coloniesVisible) visibleStepController.domElement.style.display = 'none'; } catch (e) {}
 
 
   // Colonies opacity slider (applies to all allegiance groups / colony meshes)
@@ -395,13 +587,39 @@ Everyone who contributes data`
   app.heliumOpacityController = heliumOpacityCtrl;
   app.heliumColorController = heliumColorCtrl;
   try { if (!app.heliumGroup) { heliumOpacityCtrl.domElement.style.display = 'none'; heliumColorCtrl.domElement.style.display = 'none'; } } catch (e) {};
+  
+  // Guardian Sites - Master toggle
   const guardianController = galaxyGUI.add({ toggleGuardianSites: () => app.toggleGuardianSites() }, 'toggleGuardianSites').name('Show Guardian Sites');
-  // Disable guardian site toggle if guardian data not yet loaded (it will be enabled by App when ready)
   app.guardianController = guardianController;
-  try {
-    const btn = guardianController.domElement.querySelector('button');
-    if (btn && !app.guardianGroup) { btn.disabled = true; btn.style.opacity = '0.5'; btn.title = 'Guardian sites will be available after Helium Levels are loaded'; }
-  } catch (e) {}
+  
+  // Guardian Beacons
+  const guardianBeaconsController = galaxyGUI.add({ toggleGuardianBeacons: () => app.toggleGuardianBeacons() }, 'toggleGuardianBeacons').name('Show Beacons');
+  app.guardianBeaconsController = guardianBeaconsController;
+  const guardianBeaconsOpacityCtrl = galaxyGUI.add(app.guardianBeaconsState, 'opacity', 0, 1, 0.01).name('Beacons Opacity').onChange((val) => { if (app.guardianBeaconsGroup) { app.guardianBeaconsGroup.traverse(obj => { if (obj.material) { obj.material.opacity = val; obj.material.transparent = true; } }); } });
+  app.guardianBeaconsOpacityController = guardianBeaconsOpacityCtrl;
+  try { guardianBeaconsController.domElement.style.display = 'none'; guardianBeaconsOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+  
+  // Guardian Ruins
+  const guardianRuinsController = galaxyGUI.add({ toggleGuardianRuins: () => app.toggleGuardianRuins() }, 'toggleGuardianRuins').name('Show Ruins');
+  app.guardianRuinsController = guardianRuinsController;
+  const guardianRuinsOpacityCtrl = galaxyGUI.add(app.guardianRuinsState, 'opacity', 0, 1, 0.01).name('Ruins Opacity').onChange((val) => { if (app.guardianRuinsGroup) { app.guardianRuinsGroup.traverse(obj => { if (obj.material) { obj.material.opacity = val; obj.material.transparent = true; } }); } });
+  app.guardianRuinsOpacityController = guardianRuinsOpacityCtrl;
+  try { guardianRuinsController.domElement.style.display = 'none'; guardianRuinsOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+  
+  // Guardian Structures
+  const guardianStructuresController = galaxyGUI.add({ toggleGuardianStructures: () => app.toggleGuardianStructures() }, 'toggleGuardianStructures').name('Show Structures');
+  app.guardianStructuresController = guardianStructuresController;
+  const guardianStructuresOpacityCtrl = galaxyGUI.add(app.guardianStructuresState, 'opacity', 0, 1, 0.01).name('Structures Opacity').onChange((val) => { if (app.guardianStructuresGroup) { app.guardianStructuresGroup.traverse(obj => { if (obj.material) { obj.material.opacity = val; obj.material.transparent = true; } }); } });
+  app.guardianStructuresOpacityController = guardianStructuresOpacityCtrl;
+  try { guardianStructuresController.domElement.style.display = 'none'; guardianStructuresOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+  
+  // Guardian Connections
+  const guardianConnectionsController = galaxyGUI.add({ toggleGuardianConnections: () => app.toggleGuardianConnections() }, 'toggleGuardianConnections').name('Show Connections');
+  app.guardianConnectionsController = guardianConnectionsController;
+  const guardianConnectionsOpacityCtrl = galaxyGUI.add(app.guardianConnectionsState, 'opacity', 0, 1, 0.01).name('Connections Opacity').onChange((val) => { if (app.guardianConnectionsGroup) { app.guardianConnectionsGroup.traverse(obj => { if (obj.material) { obj.material.opacity = val; obj.material.transparent = true; } }); } });
+  app.guardianConnectionsOpacityController = guardianConnectionsOpacityCtrl;
+  try { guardianConnectionsController.domElement.style.display = 'none'; guardianConnectionsOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+  
   galaxyGUI.hide();
 
   // Earth Like Worlds GUI (placeholder)

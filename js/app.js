@@ -53,8 +53,45 @@ export class App {
 
   static guardianGroup = null;
   static guardianController = null;
+  
+  static guardianBeaconsGroup = null;
+  static guardianBeaconsController = null;
+  static guardianBeaconsState = { opacity: 0.5 };
+
+  static guardianRuinsGroup = null;
+  static guardianRuinsController = null;
+  static guardianRuinsState = { opacity: 0.5 };
+
+  static guardianStructuresGroup = null;
+  static guardianStructuresController = null;
+  static guardianStructuresState = { opacity: 0.5 };
+
+  static guardianConnectionsGroup = null;
+  static guardianConnectionsController = null;
+  static guardianConnectionsState = { opacity: 0.5 };
+
   static densityScanGroup = null;
   static densityScanController = null;
+
+  static hMassGroup = null;
+  static hMassController = null;
+  static hMassState = { opacity: 0.5, colorTemp: 0.9 };
+
+  static gMassGroup = null;
+  static gMassController = null;
+  static gMassState = { opacity: 0.5, colorTemp: 0.7 };
+
+  static fMassGroup = null;
+  static fMassController = null;
+  static fMassState = { opacity: 0.5, colorTemp: 0.75 };
+
+  static eMassGroup = null;
+  static eMassController = null;
+  static eMassState = { opacity: 0.5, colorTemp: 0.8 };
+
+  static wolfRayetGroup = null;
+  static wolfRayetController = null;
+  static wolfRayetState = { opacity: 0.5, colorTemp: 1.0 };
   static coloniesOpacity = 0.15;
   static coloniesVisible = true;
   static coloniesController = null;
@@ -368,11 +405,8 @@ export class App {
     if (this.coloniesController) {
       try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
     }
-    // Show or hide the Visible Step slider based on colonies visibility
-    if (this.visibleStepController && this.visibleStepController.domElement) {
-      try { this.visibleStepController.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
-    }
-    // Show or hide the Colonies Opacity slider as well
+    // Visible Step slider is commented out - no longer show/hide it
+    // Show or hide the Colonies Opacity slider based on colonies visibility
     if (this.coloniesOpacityController && this.coloniesOpacityController.domElement) {
       try { this.coloniesOpacityController.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
     }
@@ -427,7 +461,7 @@ export class App {
         const gltf = await loadGLTF('./galaxyscience/helium_levels.glb');
         const model = gltf.scene;
         const He_groups = [[],[],[],[],[],[],[]];
-        let guardian_ruins = [], guardian_structures = [], guardian_beacons = [], guardian_connector = [];
+        // Only load helium meshes (mesh0-mesh6), ignore guardian meshes (mesh7-mesh11)
         model.traverse((child) => {
           if (child.isMesh || child.type === 'Points') {
             switch (child.name) {
@@ -438,11 +472,7 @@ export class App {
               case 'mesh4': He_groups[4].push(child); break;
               case 'mesh5': He_groups[5].push(child); break;
               case 'mesh6': He_groups[6].push(child); break;
-              case 'mesh7': guardian_ruins.push(child); break;
-              case 'mesh8': guardian_structures.push(child); break;
-              case 'mesh9': guardian_beacons.push(child); break;
-              case 'mesh10': break;
-              case 'mesh11': guardian_connector.push(child); break;
+              // Ignore mesh7-mesh11 (guardian data - now loaded separately)
             }
           }
         });
@@ -465,18 +495,6 @@ export class App {
         // Show helium controls (opacity/color) now that helium data is available
         if (this.heliumOpacityController && this.heliumOpacityController.domElement) { try { this.heliumOpacityController.domElement.style.display = ''; } catch (e) {} }
         if (this.heliumColorController && this.heliumColorController.domElement) { try { this.heliumColorController.domElement.style.display = ''; } catch (e) {} }
-        // guardian group
-        this.guardianGroup = new THREE.Group();
-        [...guardian_ruins, ...guardian_structures, ...guardian_beacons, ...guardian_connector].forEach(mesh => this.guardianGroup.add(mesh));
-        this.scene.add(this.guardianGroup);
-        // If UI has a guardian controller, enable it now that guardianGroup is present
-        if (this.guardianController) {
-          try {
-            const btn = this.guardianController.domElement.querySelector('button');
-            if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.title = ''; }
-            this.guardianController.name(this.guardianGroup.visible ? 'Hide Guardian Sites' : 'Show Guardian Sites');
-          } catch (e) { /* ignore UI update errors */ }
-        }
       } catch (err) { console.error('Helium load failed', err); }
     } else {
       this.heliumGroup.visible = !this.heliumGroup.visible;
@@ -500,10 +518,412 @@ export class App {
     colors.needsUpdate = true;
   }
 
-  static toggleGuardianSites() {
-    if (!this.guardianGroup) { console.warn('Guardian Sites not yet loaded'); return; }
-    this.guardianGroup.visible = !this.guardianGroup.visible;
-    if (this.guardianController) this.guardianController.name(this.guardianGroup.visible ? 'Hide Guardian Sites' : 'Show Guardian Sites');
+  static getStarColorFromTemp(temp) {
+    // temp: 0-1 mapped to standard H-R diagram color sequence
+    // 0 = cool red (M-class, ~2500K) → 1 = hot blue (O-class, ~30000K+)
+    // Standard stellar spectral sequence: M(red) → K(orange) → G(yellow) → F(yellow-white) → A(white) → B(blue-white) → O(blue)
+    const color = new THREE.Color();
+    
+    if (temp < 0.2) {
+      // M-class: Deep red to red-orange (2500-3500K)
+      const t = temp / 0.2;
+      color.setHSL(0.0 + t * 0.03, 0.95 - t * 0.15, 0.3 + t * 0.15);
+    } else if (temp < 0.35) {
+      // K-class: Orange (3500-5000K)
+      const t = (temp - 0.2) / 0.15;
+      color.setHSL(0.08 + t * 0.04, 0.9 - t * 0.1, 0.45 + t * 0.1);
+    } else if (temp < 0.5) {
+      // G-class: Yellow (5000-6000K, Sun-like)
+      const t = (temp - 0.35) / 0.15;
+      color.setHSL(0.14 + t * 0.02, 0.85 - t * 0.25, 0.55 + t * 0.05);
+    } else if (temp < 0.65) {
+      // F-class: Yellow-white (6000-7500K)
+      const t = (temp - 0.5) / 0.15;
+      color.setHSL(0.16 - t * 0.04, 0.6 - t * 0.4, 0.6 + t * 0.1);
+    } else if (temp < 0.8) {
+      // A-class: White (7500-10000K)
+      const t = (temp - 0.65) / 0.15;
+      color.setHSL(0.12 + t * 0.45, 0.2 - t * 0.15, 0.7 + t * 0.1);
+    } else if (temp < 0.92) {
+      // B-class: Blue-white (10000-30000K)
+      const t = (temp - 0.8) / 0.12;
+      color.setHSL(0.58 + t * 0.02, 0.5 + t * 0.3, 0.75 + t * 0.1);
+    } else {
+      // O-class: Intense blue (30000K+)
+      const t = (temp - 0.92) / 0.08;
+      color.setHSL(0.6 + t * 0.05, 0.9 + t * 0.1, 0.85 + t * 0.1);
+    }
+    return color;
+  }
+
+  static async toggleGuardianSites() {
+    // Master toggle that loads all guardian site types
+    if (!this.guardianBeaconsGroup && !this.guardianRuinsGroup && !this.guardianStructuresGroup && !this.guardianConnectionsGroup) {
+      // First time - load all guardian GLB files
+      if (this.guardianController) {
+        try { const btn = this.guardianController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading Guardian Sites...'; } } catch (e) {}
+      }
+      
+      // Load all 4 guardian GLB files in parallel
+      const guardianFiles = [
+        { name: 'beacons', file: './GuardianGLB/guardian_beacons.glb', stateKey: 'guardianBeaconsGroup', state: this.guardianBeaconsState },
+        { name: 'ruins', file: './GuardianGLB/guardian_ruins.glb', stateKey: 'guardianRuinsGroup', state: this.guardianRuinsState },
+        { name: 'structures', file: './GuardianGLB/guardian_structures.glb', stateKey: 'guardianStructuresGroup', state: this.guardianStructuresState },
+        { name: 'connections', file: './GuardianGLB/guardian_connection_lines.glb', stateKey: 'guardianConnectionsGroup', state: this.guardianConnectionsState }
+      ];
+
+      try {
+        await Promise.all(guardianFiles.map(async ({ name, file, stateKey, state }) => {
+          try {
+            const gltf = await loadGLTF(file);
+            const group = gltf.scene;
+            group.traverse((obj) => {
+              if (obj.material) {
+                obj.material.transparent = true;
+                obj.material.opacity = state.opacity;
+                obj.material.depthWrite = false;
+              }
+            });
+            this[stateKey] = group;
+            this.scene.add(group);
+            group.visible = true;
+            console.log(`Loaded guardian ${name}`);
+          } catch (err) {
+            console.error(`Failed to load guardian ${name}:`, err);
+          }
+        }));
+
+        // Re-enable button and show individual controls
+        if (this.guardianController) {
+          try { this.guardianController.name('Hide Guardian Sites'); const btn = this.guardianController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        
+        // Show individual guardian controls
+        [this.guardianBeaconsController, this.guardianRuinsController, this.guardianStructuresController, this.guardianConnectionsController].forEach(ctrl => {
+          if (ctrl && ctrl.domElement) { try { ctrl.domElement.style.display = ''; } catch (e) {} }
+        });
+        [this.guardianBeaconsOpacityController, this.guardianRuinsOpacityController, this.guardianStructuresOpacityController, this.guardianConnectionsOpacityController].forEach(ctrl => {
+          if (ctrl && ctrl.domElement) { try { ctrl.domElement.style.display = ''; } catch (e) {} }
+        });
+      } catch (err) {
+        console.error('Guardian sites load failed', err);
+      }
+    } else {
+      // Toggle visibility of all guardian groups
+      const anyVisible = this.guardianBeaconsGroup?.visible || this.guardianRuinsGroup?.visible || this.guardianStructuresGroup?.visible || this.guardianConnectionsGroup?.visible;
+      const newVisible = !anyVisible;
+      
+      if (this.guardianBeaconsGroup) this.guardianBeaconsGroup.visible = newVisible;
+      if (this.guardianRuinsGroup) this.guardianRuinsGroup.visible = newVisible;
+      if (this.guardianStructuresGroup) this.guardianStructuresGroup.visible = newVisible;
+      if (this.guardianConnectionsGroup) this.guardianConnectionsGroup.visible = newVisible;
+      
+      if (this.guardianController) this.guardianController.name(newVisible ? 'Hide Guardian Sites' : 'Show Guardian Sites');
+      
+      // Show/hide individual controls
+      const display = newVisible ? '' : 'none';
+      [this.guardianBeaconsController, this.guardianRuinsController, this.guardianStructuresController, this.guardianConnectionsController].forEach(ctrl => {
+        if (ctrl && ctrl.domElement) { try { ctrl.domElement.style.display = display; } catch (e) {} }
+      });
+      [this.guardianBeaconsOpacityController, this.guardianRuinsOpacityController, this.guardianStructuresOpacityController, this.guardianConnectionsOpacityController].forEach(ctrl => {
+        if (ctrl && ctrl.domElement) { try { ctrl.domElement.style.display = display; } catch (e) {} }
+      });
+    }
+  }
+
+  static toggleGuardianBeacons() {
+    if (this.guardianBeaconsGroup) {
+      this.guardianBeaconsGroup.visible = !this.guardianBeaconsGroup.visible;
+      if (this.guardianBeaconsController) this.guardianBeaconsController.name(this.guardianBeaconsGroup.visible ? 'Hide Beacons' : 'Show Beacons');
+      if (this.guardianBeaconsOpacityController && this.guardianBeaconsOpacityController.domElement) {
+        try { this.guardianBeaconsOpacityController.domElement.style.display = this.guardianBeaconsGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static toggleGuardianRuins() {
+    if (this.guardianRuinsGroup) {
+      this.guardianRuinsGroup.visible = !this.guardianRuinsGroup.visible;
+      if (this.guardianRuinsController) this.guardianRuinsController.name(this.guardianRuinsGroup.visible ? 'Hide Ruins' : 'Show Ruins');
+      if (this.guardianRuinsOpacityController && this.guardianRuinsOpacityController.domElement) {
+        try { this.guardianRuinsOpacityController.domElement.style.display = this.guardianRuinsGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static toggleGuardianStructures() {
+    if (this.guardianStructuresGroup) {
+      this.guardianStructuresGroup.visible = !this.guardianStructuresGroup.visible;
+      if (this.guardianStructuresController) this.guardianStructuresController.name(this.guardianStructuresGroup.visible ? 'Hide Structures' : 'Show Structures');
+      if (this.guardianStructuresOpacityController && this.guardianStructuresOpacityController.domElement) {
+        try { this.guardianStructuresOpacityController.domElement.style.display = this.guardianStructuresGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static toggleGuardianConnections() {
+    if (this.guardianConnectionsGroup) {
+      this.guardianConnectionsGroup.visible = !this.guardianConnectionsGroup.visible;
+      if (this.guardianConnectionsController) this.guardianConnectionsController.name(this.guardianConnectionsGroup.visible ? 'Hide Connections' : 'Show Connections');
+      if (this.guardianConnectionsOpacityController && this.guardianConnectionsOpacityController.domElement) {
+        try { this.guardianConnectionsOpacityController.domElement.style.display = this.guardianConnectionsGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static async toggleHMass() {
+    if (!this.hMassGroup) {
+      // First-time load
+      if (this.hMassController) {
+        try { const btn = this.hMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading H Mass data...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./Star_Type_Glb/mass_code_7.gltf');
+        this.hMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.hMassState.colorTemp);
+        this.hMassGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.opacity = this.hMassState.opacity;
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+            obj.material.emissiveIntensity = 0.5;
+            obj.material.depthWrite = false;
+          }
+        });
+        this.scene.add(this.hMassGroup);
+        this.hMassGroup.visible = true;
+        if (this.hMassController) {
+          try { this.hMassController.name('Hide H Mass'); const btn = this.hMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show H Mass opacity control
+        if (this.hMassOpacityController && this.hMassOpacityController.domElement) {
+          try { this.hMassOpacityController.domElement.style.display = ''; } catch (e) {}
+        }
+        if (this.hMassColorController && this.hMassColorController.domElement) {
+          try { this.hMassColorController.domElement.style.display = ''; } catch (e) {}
+        }
+      } catch (err) {
+        console.error('H Mass load failed', err);
+        if (this.hMassController) {
+          try { const btn = this.hMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {}
+        }
+      }
+    } else {
+      this.hMassGroup.visible = !this.hMassGroup.visible;
+      if (this.hMassController) this.hMassController.name(this.hMassGroup.visible ? 'Hide H Mass' : 'Show H Mass');
+      // Show/hide H Mass opacity control
+      if (this.hMassOpacityController && this.hMassOpacityController.domElement) {
+        try { this.hMassOpacityController.domElement.style.display = this.hMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+      if (this.hMassColorController && this.hMassColorController.domElement) {
+        try { this.hMassColorController.domElement.style.display = this.hMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static async toggleGMass() {
+    if (!this.gMassGroup) {
+      // First-time load
+      if (this.gMassController) {
+        try { const btn = this.gMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading G Mass data...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./Star_Type_Glb/mass_code_6.gltf');
+        this.gMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.gMassState.colorTemp);
+        this.gMassGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.opacity = this.gMassState.opacity;
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+            obj.material.emissiveIntensity = 0.5;
+            obj.material.depthWrite = false;
+          }
+        });
+        this.scene.add(this.gMassGroup);
+        this.gMassGroup.visible = true;
+        if (this.gMassController) {
+          try { this.gMassController.name('Hide G Mass'); const btn = this.gMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show G Mass opacity control
+        if (this.gMassOpacityController && this.gMassOpacityController.domElement) {
+          try { this.gMassOpacityController.domElement.style.display = ''; } catch (e) {}
+        }
+        if (this.gMassColorController && this.gMassColorController.domElement) {
+          try { this.gMassColorController.domElement.style.display = ''; } catch (e) {}
+        }
+      } catch (err) {
+        console.error('G Mass load failed', err);
+        if (this.gMassController) {
+          try { const btn = this.gMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {}
+        }
+      }
+    } else {
+      this.gMassGroup.visible = !this.gMassGroup.visible;
+      if (this.gMassController) this.gMassController.name(this.gMassGroup.visible ? 'Hide G Mass' : 'Show G Mass');
+      // Show/hide G Mass opacity control
+      if (this.gMassOpacityController && this.gMassOpacityController.domElement) {
+        try { this.gMassOpacityController.domElement.style.display = this.gMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+      if (this.gMassColorController && this.gMassColorController.domElement) {
+        try { this.gMassColorController.domElement.style.display = this.gMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static async toggleFMass() {
+    if (!this.fMassGroup) {
+      // First-time load
+      if (this.fMassController) {
+        try { const btn = this.fMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading F Mass data...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./Star_Type_Glb/mass_code_6.gltf');
+        this.fMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.fMassState.colorTemp);
+        this.fMassGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.opacity = this.fMassState.opacity;
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+            obj.material.emissiveIntensity = 0.5;
+            obj.material.depthWrite = false;
+          }
+        });
+        this.scene.add(this.fMassGroup);
+        this.fMassGroup.visible = true;
+        if (this.fMassController) {
+          try { this.fMassController.name('Hide F Mass'); const btn = this.fMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show F Mass opacity control
+        if (this.fMassOpacityController && this.fMassOpacityController.domElement) {
+          try { this.fMassOpacityController.domElement.style.display = ''; } catch (e) {}
+        }
+        if (this.fMassColorController && this.fMassColorController.domElement) {
+          try { this.fMassColorController.domElement.style.display = ''; } catch (e) {}
+        }
+      } catch (err) {
+        console.error('F Mass load failed', err);
+        if (this.fMassController) {
+          try { const btn = this.fMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {}
+        }
+      }
+    } else {
+      this.fMassGroup.visible = !this.fMassGroup.visible;
+      if (this.fMassController) this.fMassController.name(this.fMassGroup.visible ? 'Hide F Mass' : 'Show F Mass');
+      // Show/hide F Mass opacity control
+      if (this.fMassOpacityController && this.fMassOpacityController.domElement) {
+        try { this.fMassOpacityController.domElement.style.display = this.fMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+      if (this.fMassColorController && this.fMassColorController.domElement) {
+        try { this.fMassColorController.domElement.style.display = this.fMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static async toggleEMass() {
+    if (!this.eMassGroup) {
+      // First-time load
+      if (this.eMassController) {
+        try { const btn = this.eMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading E Mass data...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./Star_Type_Glb/mass_code_6.gltf');
+        this.eMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.eMassState.colorTemp);
+        this.eMassGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.opacity = this.eMassState.opacity;
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+            obj.material.emissiveIntensity = 0.5;
+            obj.material.depthWrite = false;
+          }
+        });
+        this.scene.add(this.eMassGroup);
+        this.eMassGroup.visible = true;
+        if (this.eMassController) {
+          try { this.eMassController.name('Hide E Mass'); const btn = this.eMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show E Mass opacity control
+        if (this.eMassOpacityController && this.eMassOpacityController.domElement) {
+          try { this.eMassOpacityController.domElement.style.display = ''; } catch (e) {}
+        }
+        if (this.eMassColorController && this.eMassColorController.domElement) {
+          try { this.eMassColorController.domElement.style.display = ''; } catch (e) {}
+        }
+      } catch (err) {
+        console.error('E Mass load failed', err);
+        if (this.eMassController) {
+          try { const btn = this.eMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {}
+        }
+      }
+    } else {
+      this.eMassGroup.visible = !this.eMassGroup.visible;
+      if (this.eMassController) this.eMassController.name(this.eMassGroup.visible ? 'Hide E Mass' : 'Show E Mass');
+      // Show/hide E Mass opacity control
+      if (this.eMassOpacityController && this.eMassOpacityController.domElement) {
+        try { this.eMassOpacityController.domElement.style.display = this.eMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+      if (this.eMassColorController && this.eMassColorController.domElement) {
+        try { this.eMassColorController.domElement.style.display = this.eMassGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static async toggleWolfRayet() {
+    if (!this.wolfRayetGroup) {
+      // First-time load
+      if (this.wolfRayetController) {
+        try { const btn = this.wolfRayetController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading Wolf Rayet data...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./Star_Type_Glb/Wolf-Rayet-stars_pointcloud.glb');
+        this.wolfRayetGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.wolfRayetState.colorTemp);
+        this.wolfRayetGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.opacity = this.wolfRayetState.opacity;
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+            obj.material.emissiveIntensity = 0.8;
+            obj.material.depthWrite = false;
+          }
+        });
+        this.scene.add(this.wolfRayetGroup);
+        this.wolfRayetGroup.visible = true;
+        if (this.wolfRayetController) {
+          try { this.wolfRayetController.name('Hide Wolf Rayet'); const btn = this.wolfRayetController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show Wolf Rayet opacity control
+        if (this.wolfRayetOpacityController && this.wolfRayetOpacityController.domElement) {
+          try { this.wolfRayetOpacityController.domElement.style.display = ''; } catch (e) {}
+        }
+        if (this.wolfRayetColorController && this.wolfRayetColorController.domElement) {
+          try { this.wolfRayetColorController.domElement.style.display = ''; } catch (e) {}
+        }
+      } catch (err) {
+        console.error('Wolf Rayet load failed', err);
+        if (this.wolfRayetController) {
+          try { const btn = this.wolfRayetController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {}
+        }
+      }
+    } else {
+      this.wolfRayetGroup.visible = !this.wolfRayetGroup.visible;
+      if (this.wolfRayetController) this.wolfRayetController.name(this.wolfRayetGroup.visible ? 'Hide Wolf Rayet' : 'Show Wolf Rayet');
+      // Show/hide Wolf Rayet opacity control
+      if (this.wolfRayetOpacityController && this.wolfRayetOpacityController.domElement) {
+        try { this.wolfRayetOpacityController.domElement.style.display = this.wolfRayetGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+      if (this.wolfRayetColorController && this.wolfRayetColorController.domElement) {
+        try { this.wolfRayetColorController.domElement.style.display = this.wolfRayetGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
   }
 
   static async toggledensityscanCloud() {
