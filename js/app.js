@@ -70,6 +70,11 @@ export class App {
   static guardianConnectionsController = null;
   static guardianConnectionsState = { opacity: 0.5 };
 
+  static waypointsGroup = null;
+  static waypointsController = null;
+  static waypointsState = { opacity: 0.5 };
+  static waypointsOpacityController = null;
+
   static densityScanGroup = null;
   static densityScanController = null;
 
@@ -667,6 +672,41 @@ export class App {
       if (this.guardianConnectionsController) this.guardianConnectionsController.name(this.guardianConnectionsGroup.visible ? 'Hide Connections' : 'Show Connections');
       if (this.guardianConnectionsOpacityController && this.guardianConnectionsOpacityController.domElement) {
         try { this.guardianConnectionsOpacityController.domElement.style.display = this.guardianConnectionsGroup.visible ? '' : 'none'; } catch (e) {}
+      }
+    }
+  }
+
+  static async toggleWaypoints() {
+    if (!this.waypointsGroup) {
+      // First-time load
+      if (this.waypointsController) {
+        try { const btn = this.waypointsController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading Waypoints...'; } } catch (e) {}
+      }
+      try {
+        const gltf = await loadGLTF('./DW3/waypoints_complete.glb');
+        this.waypointsGroup = gltf.scene;
+        this.waypointsGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material.transparent = true;
+            obj.material.opacity = this.waypointsState.opacity;
+            obj.material.depthWrite = false;
+          }
+        });
+        this.scene.add(this.waypointsGroup);
+        this.waypointsGroup.visible = true;
+        if (this.waypointsController) {
+          try { this.waypointsController.name('Hide Waypoints'); const btn = this.waypointsController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+        }
+        // Show waypoints opacity control
+        if (this.waypointsOpacityController && this.waypointsOpacityController.domElement) {
+          try { this.waypointsOpacityController.domElement.style.display = ''; } catch (e) {}
+        }
+      } catch (err) { console.error('Waypoints load failed', err); }
+    } else {
+      this.waypointsGroup.visible = !this.waypointsGroup.visible;
+      if (this.waypointsController) this.waypointsController.name(this.waypointsGroup.visible ? 'Hide Waypoints' : 'Show Waypoints');
+      if (this.waypointsOpacityController && this.waypointsOpacityController.domElement) {
+        try { this.waypointsOpacityController.domElement.style.display = this.waypointsGroup.visible ? '' : 'none'; } catch (e) {}
       }
     }
   }

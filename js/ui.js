@@ -19,10 +19,19 @@ export function initGUIs(app) {
       .name('Galaxy Map Opacity')
       .onChange((val) => { if (app.galacticPlane) { app.galacticPlane.material.opacity = val; app.galacticPlane.material.transparent = true; } });
     
-    // Galaxy Map Y Position (directly below Galaxy Map Opacity)
-    const gpYCtrl = gui.add(app.galacticPlaneState, 'y', -20000, 20000, 20)
+    // Galaxy Map Y Position (directly below Galaxy Map Opacity) - slider with coarse steps
+    const yPositionSteps = [-5000, -4000, -3000, -2000, -1500, -1000, -800, -600, -400, -200, 0, 200, 400, 600, 800, 1000, 1500, 2000, 3000, 4000, 5000];
+    const gpYCtrl = gui.add(app.galacticPlaneState, 'y', -5000, 5000, 1)
       .name('Galaxy Map Y Position')
-      .onChange((val) => { if (app.galacticPlane) app.galacticPlane.position.y = val; });
+      .onChange((val) => {
+        // Snap to nearest predefined step
+        const nearest = yPositionSteps.reduce((prev, curr) => 
+          Math.abs(curr - val) < Math.abs(prev - val) ? curr : prev
+        );
+        app.galacticPlaneState.y = nearest;
+        if (app.galacticPlane) app.galacticPlane.position.y = nearest;
+        gpYCtrl.updateDisplay();
+      });
     
     // Track controllers so we can show/hide them with the galactic plane toggle
     if (!app.galacticOpacityControllers) app.galacticOpacityControllers = [];
@@ -208,6 +217,27 @@ Everyone who contributes data`
 
   // Add shared controls (place at top of expedition GUI)
   addSharedControls(expeditionGUI);
+
+  // Waypoints controls
+  const waypointsController = expeditionGUI
+    .add({ toggleWaypoints: () => app.toggleWaypoints() }, 'toggleWaypoints')
+    .name('Show Waypoints');
+  app.waypointsController = waypointsController;
+
+  const waypointsOpacityCtrl = expeditionGUI.add(app.waypointsState, 'opacity', 0, 1, 0.01)
+    .name('Waypoints Opacity')
+    .onChange((val) => {
+      if (app.waypointsGroup) {
+        app.waypointsGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.waypointsOpacityController = waypointsOpacityCtrl;
+  try { if (!app.waypointsGroup) waypointsOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
 
 
 
