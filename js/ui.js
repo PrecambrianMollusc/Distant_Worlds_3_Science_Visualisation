@@ -4,7 +4,7 @@ export function initGUIs(app) {
   // app is expected to expose required methods/state used below
   const modes = {
     current: null,
-    options: ['Galaxy Visuals', 'Expedition Waypoints', 'Stellar Density', 'Stellar Properties', 'Earth Like Worlds']
+    options: ['Galaxy Visuals', 'Expedition Waypoints', 'Stellar Density', 'Stellar Properties', 'IGAU Eishoqs', 'Earth Like Worlds']
   };
 
   // Helper to add shared controls to each sub-GUI
@@ -125,6 +125,7 @@ Everyone who contributes data`
         'Expedition Waypoints': expeditionGUI,
         'Stellar Density': densityGUI,
         'Stellar Properties': propertiesGUI,
+        'IGAU Eishoqs': igauEishoqsGUI,
         'Earth Like Worlds': earthGUI
       };
       const target = guiMap[label];
@@ -440,6 +441,303 @@ Everyone who contributes data`
   app.wolfRayetColorController = wolfRayetColorCtrl;
   try { if (!app.wolfRayetGroup) wolfRayetColorCtrl.domElement.style.display = 'none'; } catch (e) {}
 
+  // IGAU Eishoqs GUI (duplicate of Stellar Properties)
+  const igauEishoqsGUI = new GUI({ width: 300 });
+  igauEishoqsGUI.domElement.style.top = subGuiTop;
+  igauEishoqsGUI.domElement.style.left = subGuiLeft;
+  igauEishoqsGUI.domElement.style.maxHeight = 'calc(100vh - 20px)';
+  igauEishoqsGUI.domElement.style.overflowY = 'auto';
+  igauEishoqsGUI.domElement.style.bottom = '10px';
+  const igauEishoqsHeader = document.createElement('div');
+  igauEishoqsHeader.innerText = 'IGAU Eishoqs Controls';
+  igauEishoqsHeader.style.fontWeight = 'bold';
+  igauEishoqsHeader.style.fontSize = '14px';
+  igauEishoqsHeader.style.color = '#2196f3';
+  igauEishoqsHeader.style.margin = '6px 0';
+  igauEishoqsGUI.domElement.prepend(igauEishoqsHeader);
+  igauEishoqsGUI.hide();
+  
+  // Go To Eishoqs button
+  igauEishoqsGUI.add({ goToEishoqs: () => app.focusCameraOnEishoqs() }, 'goToEishoqs').name('Go To Eishoqs');
+  
+  // Sector Boundary Box Controls
+  app.sectorBoundaryController = igauEishoqsGUI.add({ showSectorBoundary: () => app.toggleSectorBoundary() }, 'showSectorBoundary').name('Show Sector Boundary');
+  app.sectorBoundaryOpacityController = igauEishoqsGUI.add(app.sectorBoundaryState, 'opacity', 0, 1, 0.01).name('Boundary Opacity').onChange(() => {
+    if (app.sectorBoundaryBox && app.sectorBoundaryBox.material) {
+      app.sectorBoundaryBox.material.opacity = app.sectorBoundaryState.opacity;
+    }
+  });
+  app.sectorBoundaryOpacityController.domElement.style.display = 'none';
+  
+  app.sectorBoundaryColorController = igauEishoqsGUI.add(app.sectorBoundaryState, 'colorTemp', 0, 1, 0.01).name('Boundary Color Temp').onChange(() => {
+    if (app.sectorBoundaryBox && app.sectorBoundaryBox.material) {
+      const starColor = app.getStarColorFromTemp(app.sectorBoundaryState.colorTemp);
+      app.sectorBoundaryBox.material.color = starColor;
+    }
+  });
+  app.sectorBoundaryColorController.domElement.style.display = 'none';
+  
+  addSharedControls(igauEishoqsGUI);
+
+  // H Mass controls
+  const igauHMassController = igauEishoqsGUI
+    .add({ toggleIgauHMass: () => app.toggleIgauHMass() }, 'toggleIgauHMass')
+    .name('Show H Mass');
+  app.igauHMassController = igauHMassController;
+
+  const igauHMassOpacityCtrl = igauEishoqsGUI.add(app.igauHMassState, 'opacity', 0, 1, 0.01)
+    .name('H Mass Opacity')
+    .onChange((val) => {
+      if (app.igauHMassGroup) {
+        app.igauHMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauHMassOpacityController = igauHMassOpacityCtrl;
+  try { if (!app.igauHMassGroup) igauHMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauHMassColorCtrl = igauEishoqsGUI.add(app.igauHMassState, 'colorTemp', 0, 1, 0.01)
+    .name('H Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauHMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauHMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauHMassColorController = igauHMassColorCtrl;
+  try { if (!app.igauHMassGroup) igauHMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // G Mass controls
+  const igauGMassController = igauEishoqsGUI
+    .add({ toggleIgauGMass: () => app.toggleIgauGMass() }, 'toggleIgauGMass')
+    .name('Show G Mass');
+  app.igauGMassController = igauGMassController;
+
+  const igauGMassOpacityCtrl = igauEishoqsGUI.add(app.igauGMassState, 'opacity', 0, 1, 0.01)
+    .name('G Mass Opacity')
+    .onChange((val) => {
+      if (app.igauGMassGroup) {
+        app.igauGMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauGMassOpacityController = igauGMassOpacityCtrl;
+  try { if (!app.igauGMassGroup) igauGMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauGMassColorCtrl = igauEishoqsGUI.add(app.igauGMassState, 'colorTemp', 0, 1, 0.01)
+    .name('G Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauGMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauGMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauGMassColorController = igauGMassColorCtrl;
+  try { if (!app.igauGMassGroup) igauGMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // F Mass controls
+  const igauFMassController = igauEishoqsGUI
+    .add({ toggleIgauFMass: () => app.toggleIgauFMass() }, 'toggleIgauFMass')
+    .name('Show F Mass');
+  app.igauFMassController = igauFMassController;
+
+  const igauFMassOpacityCtrl = igauEishoqsGUI.add(app.igauFMassState, 'opacity', 0, 1, 0.01)
+    .name('F Mass Opacity')
+    .onChange((val) => {
+      if (app.igauFMassGroup) {
+        app.igauFMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauFMassOpacityController = igauFMassOpacityCtrl;
+  try { if (!app.igauFMassGroup) igauFMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauFMassColorCtrl = igauEishoqsGUI.add(app.igauFMassState, 'colorTemp', 0, 1, 0.01)
+    .name('F Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauFMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauFMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauFMassColorController = igauFMassColorCtrl;
+  try { if (!app.igauFMassGroup) igauFMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // E Mass controls
+  const igauEMassController = igauEishoqsGUI
+    .add({ toggleIgauEMass: () => app.toggleIgauEMass() }, 'toggleIgauEMass')
+    .name('Show E Mass');
+  app.igauEMassController = igauEMassController;
+
+  const igauEMassOpacityCtrl = igauEishoqsGUI.add(app.igauEMassState, 'opacity', 0, 1, 0.01)
+    .name('E Mass Opacity')
+    .onChange((val) => {
+      if (app.igauEMassGroup) {
+        app.igauEMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauEMassOpacityController = igauEMassOpacityCtrl;
+  try { if (!app.igauEMassGroup) igauEMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauEMassColorCtrl = igauEishoqsGUI.add(app.igauEMassState, 'colorTemp', 0, 1, 0.01)
+    .name('E Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauEMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauEMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauEMassColorController = igauEMassColorCtrl;
+  try { if (!app.igauEMassGroup) igauEMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // D Mass controls
+  const igauDMassController = igauEishoqsGUI
+    .add({ toggleIgauDMass: () => app.toggleIgauDMass() }, 'toggleIgauDMass')
+    .name('Show D Mass');
+  app.igauDMassController = igauDMassController;
+
+  const igauDMassOpacityCtrl = igauEishoqsGUI.add(app.igauDMassState, 'opacity', 0, 1, 0.01)
+    .name('D Mass Opacity')
+    .onChange((val) => {
+      if (app.igauDMassGroup) {
+        app.igauDMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauDMassOpacityController = igauDMassOpacityCtrl;
+  try { if (!app.igauDMassGroup) igauDMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauDMassColorCtrl = igauEishoqsGUI.add(app.igauDMassState, 'colorTemp', 0, 1, 0.01)
+    .name('D Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauDMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauDMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauDMassColorController = igauDMassColorCtrl;
+  try { if (!app.igauDMassGroup) igauDMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // C Mass controls
+  const igauCMassController = igauEishoqsGUI
+    .add({ toggleIgauCMass: () => app.toggleIgauCMass() }, 'toggleIgauCMass')
+    .name('Show C Mass');
+  app.igauCMassController = igauCMassController;
+
+  const igauCMassOpacityCtrl = igauEishoqsGUI.add(app.igauCMassState, 'opacity', 0, 1, 0.01)
+    .name('C Mass Opacity')
+    .onChange((val) => {
+      if (app.igauCMassGroup) {
+        app.igauCMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauCMassOpacityController = igauCMassOpacityCtrl;
+  try { if (!app.igauCMassGroup) igauCMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauCMassColorCtrl = igauEishoqsGUI.add(app.igauCMassState, 'colorTemp', 0, 1, 0.01)
+    .name('C Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauCMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauCMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauCMassColorController = igauCMassColorCtrl;
+  try { if (!app.igauCMassGroup) igauCMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // B Mass controls
+  const igauBMassController = igauEishoqsGUI
+    .add({ toggleIgauBMass: () => app.toggleIgauBMass() }, 'toggleIgauBMass')
+    .name('Show B Mass');
+  app.igauBMassController = igauBMassController;
+
+  const igauBMassOpacityCtrl = igauEishoqsGUI.add(app.igauBMassState, 'opacity', 0, 1, 0.01)
+    .name('B Mass Opacity')
+    .onChange((val) => {
+      if (app.igauBMassGroup) {
+        app.igauBMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.opacity = val;
+            obj.material.transparent = true;
+          }
+        });
+      }
+    });
+  app.igauBMassOpacityController = igauBMassOpacityCtrl;
+  try { if (!app.igauBMassGroup) igauBMassOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  const igauBMassColorCtrl = igauEishoqsGUI.add(app.igauBMassState, 'colorTemp', 0, 1, 0.01)
+    .name('B Mass Color Temp')
+    .onChange((val) => {
+      if (app.igauBMassGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.igauBMassGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.igauBMassColorController = igauBMassColorCtrl;
+  try { if (!app.igauBMassGroup) igauBMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
   // Stellar Density GUI
   const densityGUI = new GUI({ width: 300 });
   densityGUI.domElement.style.top = subGuiTop;
@@ -672,7 +970,7 @@ Everyone who contributes data`
       const rect = modeGUI.domElement.getBoundingClientRect();
       const topPx = rect.top + rect.height + 10;
       const t = `${topPx}px`;
-      [expeditionGUI, propertiesGUI, densityGUI, galaxyGUI, earthGUI].forEach(g => { if (g && g.domElement) g.domElement.style.top = t; });
+      [expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI].forEach(g => { if (g && g.domElement) g.domElement.style.top = t; });
     } catch (e) {}
   }
   // Run after layout and on resize
@@ -682,5 +980,5 @@ Everyone who contributes data`
   // Allow app to report mode changes programmatically so the selection UI stays in sync
   app.reportGUIMode = (mode) => { modes.current = mode; updateRadioHighlight(); };
 
-  return { modeGUI, expeditionGUI, propertiesGUI, densityGUI, galaxyGUI, earthGUI };
+  return { modeGUI, expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI };
 }

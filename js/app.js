@@ -97,6 +97,41 @@ export class App {
   static wolfRayetGroup = null;
   static wolfRayetController = null;
   static wolfRayetState = { opacity: 0.5, colorTemp: 1.0 };
+  
+  // IGAU Eishoqs Mass Codes
+  static igauHMassGroup = null;
+  static igauHMassController = null;
+  static igauHMassState = { opacity: 0.5, colorTemp: 0.9 };
+
+  static igauGMassGroup = null;
+  static igauGMassController = null;
+  static igauGMassState = { opacity: 0.5, colorTemp: 0.7 };
+
+  static igauFMassGroup = null;
+  static igauFMassController = null;
+  static igauFMassState = { opacity: 0.5, colorTemp: 0.75 };
+
+  static igauEMassGroup = null;
+  static igauEMassController = null;
+  static igauEMassState = { opacity: 0.5, colorTemp: 0.8 };
+
+  static igauDMassGroup = null;
+  static igauDMassController = null;
+  static igauDMassState = { opacity: 0.5, colorTemp: 0.8 };
+
+  static igauCMassGroup = null;
+  static igauCMassController = null;
+  static igauCMassState = { opacity: 0.5, colorTemp: 0.75 };
+
+  static igauBMassGroup = null;
+  static igauBMassController = null;
+  static igauBMassState = { opacity: 0.5, colorTemp: 0.7 };
+  
+  // Sector Boundary Box
+  static sectorBoundaryBox = null;
+  static sectorBoundaryController = null;
+  static sectorBoundaryState = { opacity: 0.5, colorTemp: 0.5 };
+  
   static coloniesOpacity = 0.15;
   static coloniesVisible = true;
   static coloniesController = null;
@@ -1074,13 +1109,183 @@ export class App {
     }
   }
 
+  // IGAU Eishoqs Mass Code Toggle Functions
+  static async toggleIgauHMass() {
+    if (!this.igauHMassGroup) {
+      if (this.igauHMassController) { try { const btn = this.igauHMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU H Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_7.gltf');
+        this.igauHMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauHMassState.colorTemp);
+        this.igauHMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauHMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauHMassGroup);
+        this.igauHMassGroup.visible = true;
+        if (this.igauHMassController) { try { this.igauHMassController.name('Hide IGAU H Mass'); const btn = this.igauHMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauHMassOpacityController && this.igauHMassOpacityController.domElement) { try { this.igauHMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauHMassColorController && this.igauHMassColorController.domElement) { try { this.igauHMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU H Mass load failed', err); if (this.igauHMassController) { try { const btn = this.igauHMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauHMassGroup.visible = !this.igauHMassGroup.visible;
+      if (this.igauHMassController) this.igauHMassController.name(this.igauHMassGroup.visible ? 'Hide IGAU H Mass' : 'Show IGAU H Mass');
+      if (this.igauHMassOpacityController && this.igauHMassOpacityController.domElement) { try { this.igauHMassOpacityController.domElement.style.display = this.igauHMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauHMassColorController && this.igauHMassColorController.domElement) { try { this.igauHMassColorController.domElement.style.display = this.igauHMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static async toggleIgauGMass() {
+    if (!this.igauGMassGroup) {
+      if (this.igauGMassController) { try { const btn = this.igauGMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU G Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_6.gltf');
+        this.igauGMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauGMassState.colorTemp);
+        this.igauGMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauGMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauGMassGroup);
+        this.igauGMassGroup.visible = true;
+        if (this.igauGMassController) { try { this.igauGMassController.name('Hide IGAU G Mass'); const btn = this.igauGMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauGMassOpacityController && this.igauGMassOpacityController.domElement) { try { this.igauGMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauGMassColorController && this.igauGMassColorController.domElement) { try { this.igauGMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU G Mass load failed', err); if (this.igauGMassController) { try { const btn = this.igauGMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauGMassGroup.visible = !this.igauGMassGroup.visible;
+      if (this.igauGMassController) this.igauGMassController.name(this.igauGMassGroup.visible ? 'Hide IGAU G Mass' : 'Show IGAU G Mass');
+      if (this.igauGMassOpacityController && this.igauGMassOpacityController.domElement) { try { this.igauGMassOpacityController.domElement.style.display = this.igauGMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauGMassColorController && this.igauGMassColorController.domElement) { try { this.igauGMassColorController.domElement.style.display = this.igauGMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static async toggleIgauFMass() {
+    if (!this.igauFMassGroup) {
+      if (this.igauFMassController) { try { const btn = this.igauFMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU F Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_5.gltf');
+        this.igauFMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauFMassState.colorTemp);
+        this.igauFMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauFMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauFMassGroup);
+        this.igauFMassGroup.visible = true;
+        if (this.igauFMassController) { try { this.igauFMassController.name('Hide IGAU F Mass'); const btn = this.igauFMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauFMassOpacityController && this.igauFMassOpacityController.domElement) { try { this.igauFMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauFMassColorController && this.igauFMassColorController.domElement) { try { this.igauFMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU F Mass load failed', err); if (this.igauFMassController) { try { const btn = this.igauFMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauFMassGroup.visible = !this.igauFMassGroup.visible;
+      if (this.igauFMassController) this.igauFMassController.name(this.igauFMassGroup.visible ? 'Hide IGAU F Mass' : 'Show IGAU F Mass');
+      if (this.igauFMassOpacityController && this.igauFMassOpacityController.domElement) { try { this.igauFMassOpacityController.domElement.style.display = this.igauFMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauFMassColorController && this.igauFMassColorController.domElement) { try { this.igauFMassColorController.domElement.style.display = this.igauFMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static async toggleIgauEMass() {
+    if (!this.igauEMassGroup) {
+      if (this.igauEMassController) { try { const btn = this.igauEMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU E Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_4.gltf');
+        this.igauEMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauEMassState.colorTemp);
+        this.igauEMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauEMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauEMassGroup);
+        this.igauEMassGroup.visible = true;
+        if (this.igauEMassController) { try { this.igauEMassController.name('Hide IGAU E Mass'); const btn = this.igauEMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauEMassOpacityController && this.igauEMassOpacityController.domElement) { try { this.igauEMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauEMassColorController && this.igauEMassColorController.domElement) { try { this.igauEMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU E Mass load failed', err); if (this.igauEMassController) { try { const btn = this.igauEMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauEMassGroup.visible = !this.igauEMassGroup.visible;
+      if (this.igauEMassController) this.igauEMassController.name(this.igauEMassGroup.visible ? 'Hide IGAU E Mass' : 'Show IGAU E Mass');
+      if (this.igauEMassOpacityController && this.igauEMassOpacityController.domElement) { try { this.igauEMassOpacityController.domElement.style.display = this.igauEMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauEMassColorController && this.igauEMassColorController.domElement) { try { this.igauEMassColorController.domElement.style.display = this.igauEMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static async toggleIgauDMass() {
+    if (!this.igauDMassGroup) {
+      if (this.igauDMassController) { try { const btn = this.igauDMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU D Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_3.gltf');
+        this.igauDMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauDMassState.colorTemp);
+        this.igauDMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauDMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauDMassGroup);
+        this.igauDMassGroup.visible = true;
+        if (this.igauDMassController) { try { this.igauDMassController.name('Hide IGAU D Mass'); const btn = this.igauDMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauDMassOpacityController && this.igauDMassOpacityController.domElement) { try { this.igauDMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauDMassColorController && this.igauDMassColorController.domElement) { try { this.igauDMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU D Mass load failed', err); if (this.igauDMassController) { try { const btn = this.igauDMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauDMassGroup.visible = !this.igauDMassGroup.visible;
+      if (this.igauDMassController) this.igauDMassController.name(this.igauDMassGroup.visible ? 'Hide IGAU D Mass' : 'Show IGAU D Mass');
+      if (this.igauDMassOpacityController && this.igauDMassOpacityController.domElement) { try { this.igauDMassOpacityController.domElement.style.display = this.igauDMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauDMassColorController && this.igauDMassColorController.domElement) { try { this.igauDMassColorController.domElement.style.display = this.igauDMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static async toggleIgauCMass() {
+    if (!this.igauCMassGroup) {
+      if (this.igauCMassController) { try { const btn = this.igauCMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU C Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_2.gltf');
+        this.igauCMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauCMassState.colorTemp);
+        this.igauCMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauCMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauCMassGroup);
+        this.igauCMassGroup.visible = true;
+        if (this.igauCMassController) { try { this.igauCMassController.name('Hide IGAU C Mass'); const btn = this.igauCMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauCMassOpacityController && this.igauCMassOpacityController.domElement) { try { this.igauCMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauCMassColorController && this.igauCMassColorController.domElement) { try { this.igauCMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU C Mass load failed', err); if (this.igauCMassController) { try { const btn = this.igauCMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauCMassGroup.visible = !this.igauCMassGroup.visible;
+      if (this.igauCMassController) this.igauCMassController.name(this.igauCMassGroup.visible ? 'Hide IGAU C Mass' : 'Show IGAU C Mass');
+      if (this.igauCMassOpacityController && this.igauCMassOpacityController.domElement) { try { this.igauCMassOpacityController.domElement.style.display = this.igauCMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauCMassColorController && this.igauCMassColorController.domElement) { try { this.igauCMassColorController.domElement.style.display = this.igauCMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
+  static async toggleIgauBMass() {
+    if (!this.igauBMassGroup) {
+      if (this.igauBMassController) { try { const btn = this.igauBMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading IGAU B Mass data...'; } } catch (e) {} }
+      try {
+        const gltf = await loadGLTF('./IGAU/Eishoqs/MassCode/mass_code_1.gltf');
+        this.igauBMassGroup = gltf.scene;
+        const starColor = this.getStarColorFromTemp(this.igauBMassState.colorTemp);
+        this.igauBMassGroup.traverse((obj) => {
+          if (obj.material) { obj.material.transparent = true; obj.material.opacity = this.igauBMassState.opacity; obj.material.color = starColor.clone(); obj.material.emissive = starColor.clone(); obj.material.emissiveIntensity = 0.5; obj.material.depthWrite = false; }
+        });
+        this.scene.add(this.igauBMassGroup);
+        this.igauBMassGroup.visible = true;
+        if (this.igauBMassController) { try { this.igauBMassController.name('Hide IGAU B Mass'); const btn = this.igauBMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {} }
+        if (this.igauBMassOpacityController && this.igauBMassOpacityController.domElement) { try { this.igauBMassOpacityController.domElement.style.display = ''; } catch (e) {} }
+        if (this.igauBMassColorController && this.igauBMassColorController.domElement) { try { this.igauBMassColorController.domElement.style.display = ''; } catch (e) {} }
+      } catch (err) { console.error('IGAU B Mass load failed', err); if (this.igauBMassController) { try { const btn = this.igauBMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = 'Load failed - check console'; } } catch (e) {} } }
+    } else {
+      this.igauBMassGroup.visible = !this.igauBMassGroup.visible;
+      if (this.igauBMassController) this.igauBMassController.name(this.igauBMassGroup.visible ? 'Hide IGAU B Mass' : 'Show IGAU B Mass');
+      if (this.igauBMassOpacityController && this.igauBMassOpacityController.domElement) { try { this.igauBMassOpacityController.domElement.style.display = this.igauBMassGroup.visible ? '' : 'none'; } catch (e) {} }
+      if (this.igauBMassColorController && this.igauBMassColorController.domElement) { try { this.igauBMassColorController.domElement.style.display = this.igauBMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+
   static switchMode(mode) {
     // Show or hide per-mode GUI folders returned from initGUIs
     if (!this.guiRefs) return;
-    const { expeditionGUI, propertiesGUI, densityGUI, galaxyGUI, earthGUI } = this.guiRefs;
+    const { expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI } = this.guiRefs;
     // Hide all first
     try { if (expeditionGUI) expeditionGUI.hide(); } catch (e) {}
     try { if (propertiesGUI) propertiesGUI.hide(); } catch (e) {}
+    try { if (igauEishoqsGUI) igauEishoqsGUI.hide(); } catch (e) {}
     try { if (densityGUI) densityGUI.hide(); } catch (e) {}
     try { if (galaxyGUI) galaxyGUI.hide(); } catch (e) {}
     try { if (earthGUI) earthGUI.hide(); } catch (e) {}
@@ -1089,13 +1294,51 @@ export class App {
     // Show selected
     if (mode === 'Expedition Waypoints') { if (expeditionGUI) { expeditionGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Expedition Waypoints'); } this.focusCameraOnColonization(); this.loadModeAssets('colonization'); }
     else if (mode === 'Stellar Properties') { if (propertiesGUI) { propertiesGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Properties'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
+    else if (mode === 'IGAU Eishoqs') { if (igauEishoqsGUI) { igauEishoqsGUI.show(); if (this.reportGUIMode) this.reportGUIMode('IGAU Eishoqs'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
     else if (mode === 'Stellar Density') { if (densityGUI) { densityGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Density'); } this.focusCameraOnDW3(); this.loadModeAssets('dw3'); }
     else if (mode === 'Galaxy Visuals') { if (galaxyGUI) { galaxyGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Galaxy Visuals'); } this.focusCameraOnScience(); this.loadModeAssets('science'); }
     else if (mode === 'Earth Like Worlds') { if (earthGUI) { earthGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Earth Like Worlds'); } }
   }
 
+  static toggleSectorBoundary() {
+    if (this.sectorBoundaryBox) {
+      this.sectorBoundaryBox.visible = !this.sectorBoundaryBox.visible;
+      if (this.sectorBoundaryController) this.sectorBoundaryController.name(this.sectorBoundaryBox.visible ? 'Hide Sector Boundary' : 'Show Sector Boundary');
+      if (this.sectorBoundaryOpacityController && this.sectorBoundaryOpacityController.domElement) { try { this.sectorBoundaryOpacityController.domElement.style.display = this.sectorBoundaryBox.visible ? '' : 'none'; } catch (e) {} }
+      if (this.sectorBoundaryColorController && this.sectorBoundaryColorController.domElement) { try { this.sectorBoundaryColorController.domElement.style.display = this.sectorBoundaryBox.visible ? '' : 'none'; } catch (e) {} }
+      return;
+    }
+    
+    // Create wireframe box for sector boundary
+    const boxGeometry = new THREE.BoxGeometry(1280, 1280, 1280);
+    const boxEdges = new THREE.EdgesGeometry(boxGeometry);
+    const starColor = this.getStarColorFromTemp(this.sectorBoundaryState.colorTemp);
+    const lineMaterial = new THREE.LineBasicMaterial({
+      color: starColor,
+      transparent: true,
+      opacity: this.sectorBoundaryState.opacity,
+      linewidth: 2
+    });
+    const wireframe = new THREE.LineSegments(boxEdges, lineMaterial);
+    wireframe.position.set(17495, 615, -27585);
+    this.scene.add(wireframe);
+    this.sectorBoundaryBox = wireframe;
+    
+    if (this.sectorBoundaryController) { try { this.sectorBoundaryController.name('Hide Sector Boundary'); } catch (e) {} }
+    if (this.sectorBoundaryOpacityController && this.sectorBoundaryOpacityController.domElement) { try { this.sectorBoundaryOpacityController.domElement.style.display = ''; } catch (e) {} }
+    if (this.sectorBoundaryColorController && this.sectorBoundaryColorController.domElement) { try { this.sectorBoundaryColorController.domElement.style.display = ''; } catch (e) {} }
+  }
+
   static focusCameraOnColonization() { /* small stub to be implemented further */ }
   static focusCameraOnIGAU() {}
+  static focusCameraOnEishoqs() {
+    if (!this.camera || !this.controls) return;
+    const targetPos = new THREE.Vector3(17495, 615, -27585);
+    const cameraPos = new THREE.Vector3(16495, 1615, -28585);
+    this.controls.target.copy(targetPos);
+    this.camera.position.copy(cameraPos);
+    this.controls.update();
+  }
   static focusCameraOnDW3() {}
   static focusCameraOnScience() {}
   static loadModeAssets() {}
