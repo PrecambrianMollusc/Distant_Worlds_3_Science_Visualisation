@@ -5,6 +5,7 @@ import { loadGLTF, loader } from './loaders.js';
 import { applyPointMaterialSettings, createStarCloudMaterial, focusCameraOnObject, setPointSize, createTextSprite } from './utils.js';
 import { thicknessSteps, axisRanges, labels } from './constants.js';
 import { initGUIs } from './ui.js';
+import { ColoniesTimelapseManager } from './colonies.js';
 
 export class App {
   static scene = null;
@@ -15,6 +16,7 @@ export class App {
 
   // Data / state
   static allegianceGroups = {};
+  static coloniesTimelapseManager = null;
   static loadedCount = 0;
   static isoFiles = [
     { level: "1e-1", file: "KDEglb/iso_0.1_draco.glb" },
@@ -135,6 +137,11 @@ export class App {
   static coloniesOpacity = 0.15;
   static coloniesVisible = true;
   static coloniesController = null;
+  static coloniesOpacityController = null;
+  static coloniesTimelineController = null;
+  static coloniesCheckboxes = []; // References to allegiance checkbox controllers
+  static coloniesAllegiancesFolder = null; // Reference to the Allegiances folder
+  static coloniesDateDisplay = null; // Reference to date display element
 
   static clipPlanes = [];
   static clippingEnabled = false;
@@ -187,64 +194,27 @@ export class App {
     this.sprite_sphere = new THREE.TextureLoader().load('https://threejs.org/examples/textures/sprites/disc.png');
     this.sprite_sphere.colorSpace = THREE.SRGBColorSpace;
 
-    // Allegiance files
-    const allegianceFiles = [
-      { name: 'Empire',     url: './glbdata/vis_bubbleEmpire.gltf'},
-      { name: 'Federation', url: './glbdata/vis_bubbleFederation.gltf'},
-      { name: 'Alliance',   url: './glbdata/vis_bubbleAlliance.gltf'},
-      { name: 'Independent', url: './glbdata/vis_bubbleIndependent.gltf'},
-      { name: 'IGAU',       url: './glbdata/vis_bubbleIGAU.gltf'},
-      { name: 'Mikunn',     url: './glbdata/vis_bubbleMikunn.gltf'},
-      { name: 'Guardian',   url: './glbdata/vis_bubbleGuardian.gltf'},
-      { name: 'Thargoid',   url: './glbdata/vis_bubbleThargoid.gltf'},
-    ];
-
-    allegianceFiles.forEach(async ({ name, url }) => {
-      try {
-        const gltf = await loadGLTF(url);
-        const group = new THREE.Group();
-        group.add(gltf.scene);
-        // Skip adding the 'Guardian' allegiance group because it is a partial duplicate
-        if (name === 'Guardian') {
-          console.info('Skipping Guardian allegiance group (will remain unloaded)');
-          // Still count this file as loaded so GUI initialization proceeds
-          this.loadedCount++;
-          if (this.loadedCount === allegianceFiles.length) {
-            this.guiRefs = initGUIs(this);
-            // Ensure default mode UI is visible once GUIs are ready (start in Galaxy Visuals)
-            this.switchMode('Galaxy Visuals');
-            // Ensure Galactic Map is shown by default
-            try { if (!this.galacticPlane || !this.galacticPlane.visible) this.toggleGalacticPlane(); } catch (e) {}
-            // Sync allegiance groups visibility with initial coloniesVisible state
-            Object.values(this.allegianceGroups).forEach(g => { g.visible = this.coloniesVisible; });
-            if (this.coloniesController) {
-              try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
-            }
-            // Apply initial colonies opacity
-            if (this.setColoniesOpacity) this.setColoniesOpacity(this.coloniesOpacity);
-          }
-          return;
-        }
-        this.allegianceGroups[name] = group;
-        this.scene.add(group);
-        applyPointMaterialSettings(group, this.sprite_sphere);
-        this.loadedCount++;
-        if (this.loadedCount === allegianceFiles.length) {
-          this.guiRefs = initGUIs(this);
-          // Ensure default mode UI is visible once GUIs are ready (start in Galaxy Visuals)
-          this.switchMode('Galaxy Visuals');
-          // Ensure Galactic Map is shown by default
-          try { if (!this.galacticPlane || !this.galacticPlane.visible) this.toggleGalacticPlane(); } catch (e) {}
-          // Sync allegiance groups visibility with initial coloniesVisible state
-          Object.values(this.allegianceGroups).forEach(g => { g.visible = this.coloniesVisible; });
-          if (this.coloniesController) {
-            try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
-          }
-        }
-      } catch (err) {
-        console.error('Error loading', url, err);
+    // Initialize Colonies Timelapse Manager
+    this.coloniesTimelapseManager = new ColoniesTimelapseManager({
+      scene: this.scene,
+      loader: loadGLTF,
+      sprite: this.sprite_sphere,
+      onReady: () => {
+        // Initialize GUI once colonies are loaded
+        this.guiRefs = initGUIs(this);
+        // Ensure default mode UI is visible once GUIs are ready (start in Galaxy Visuals)
+        this.switchMode('Galaxy Visuals');
+        // Ensure Galactic Map is shown by default
+        try { if (!this.galacticPlane || !this.galacticPlane.visible) this.toggleGalacticPlane(); } catch (e) {}
+        // Sync initial colonies visibility
+        this.setColoniesVisible(this.coloniesVisible);
+        // Apply initial colonies opacity
+        if (this.setColoniesOpacity) this.setColoniesOpacity(this.coloniesOpacity);
       }
     });
+    
+    // Start loading colonies data
+    this.coloniesTimelapseManager.init();
 
     // Iso, clip initial state
     this.clipState.thicknessIndex = 0;
@@ -441,29 +411,101 @@ export class App {
 
   static toggleColonizedSystems() {
     this.coloniesVisible = !this.coloniesVisible;
-    Object.values(this.allegianceGroups).forEach(g => { g.visible = this.coloniesVisible; });
+    this.setColoniesVisible(this.coloniesVisible);
     if (this.coloniesController) {
       try { this.coloniesController.name(this.coloniesVisible ? 'Hide Colonies' : 'Show Colonized Systems'); } catch (e) {}
     }
-    // Visible Step slider is commented out - no longer show/hide it
-    // Show or hide the Colonies Opacity slider based on colonies visibility
+    // Show or hide the Colonies controls based on colonies visibility
     if (this.coloniesOpacityController && this.coloniesOpacityController.domElement) {
       try { this.coloniesOpacityController.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
+    }
+    if (this.coloniesTimelineController && this.coloniesTimelineController.domElement) {
+      try { this.coloniesTimelineController.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
+    }
+    if (this.coloniesAllegiancesFolder && this.coloniesAllegiancesFolder.domElement) {
+      try { this.coloniesAllegiancesFolder.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
+    }
+    if (this.coloniesCheckboxes) {
+      this.coloniesCheckboxes.forEach(cb => {
+        if (cb.domElement) {
+          try { cb.domElement.style.display = this.coloniesVisible ? '' : 'none'; } catch (e) {}
+        }
+      });
+    }
+    if (this.coloniesDateDisplay && this.coloniesDateDisplay.style) {
+      this.coloniesDateDisplay.style.display = this.coloniesVisible ? '' : 'none';
+    }
+  }
+
+  static setColoniesVisible(visible) {
+    this.coloniesVisible = visible;
+    if (this.coloniesTimelapseManager) {
+      // Toggle all allegiances to match the master visibility state
+      const allegiances = this.coloniesTimelapseManager.getCategories();
+      allegiances.forEach(allegiance => {
+        this.coloniesTimelapseManager.setCategoryVisible(allegiance, visible);
+      });
+      // Ensure the checkbox states also reflect this
+      if (this.coloniesCheckboxes) {
+        this.coloniesCheckboxes.forEach(cb => {
+          try { cb.setValue(visible); } catch (e) {}
+        });
+      }
     }
   }
 
   static setColoniesOpacity(val) {
     this.coloniesOpacity = val;
-    Object.values(this.allegianceGroups).forEach(group => {
-      group.traverse(obj => {
-        if (obj.material) {
-          try { obj.material.opacity = val; obj.material.transparent = val < 1.0; } catch (e) {}
-        }
-      });
-    });
+    if (this.coloniesTimelapseManager) {
+      this.coloniesTimelapseManager.setMasterOpacity(val);
+    }
     if (this.coloniesOpacityController) {
       try { this.coloniesOpacityController.setValue(val); } catch (e) {}
     }
+  }
+
+  static setColoniesTimelinePosition(position) {
+    if (this.coloniesTimelapseManager) {
+      this.coloniesTimelapseManager.setTimelinePosition(position);
+      // Update date display if available
+      if (this.coloniesDateDisplay) {
+        this.coloniesDateDisplay.textContent = this.coloniesTimelapseManager.getCurrentDateForDisplay();
+      }
+    }
+  }
+
+  static setColonyAllegianceVisible(allegiance, visible) {
+    if (this.coloniesTimelapseManager) {
+      this.coloniesTimelapseManager.setCategoryVisible(allegiance, visible);
+    }
+  }
+
+  static isColonyAllegianceVisible(allegiance) {
+    if (this.coloniesTimelapseManager) {
+      return this.coloniesTimelapseManager.isCategoryVisible(allegiance);
+    }
+    return false;
+  }
+
+  static getColoniesTimelineLength() {
+    if (this.coloniesTimelapseManager) {
+      return this.coloniesTimelapseManager.getTimelineLength();
+    }
+    return 1;
+  }
+
+  static getColoniesAllegiances() {
+    if (this.coloniesTimelapseManager) {
+      return this.coloniesTimelapseManager.getCategories();
+    }
+    return [];
+  }
+
+  static getCurrentColoniesDate() {
+    if (this.coloniesTimelapseManager) {
+      return this.coloniesTimelapseManager.getCurrentDateForDisplay();
+    }
+    return '';
   }
 
   static toggleGalacticPlane() {

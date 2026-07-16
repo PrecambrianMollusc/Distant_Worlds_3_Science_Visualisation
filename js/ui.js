@@ -860,43 +860,64 @@ Everyone who contributes data`
   // Shared galactic map + star cloud
   addSharedControls(galaxyGUI);
 
-  // Simple colonies toggle (replaces previous per-allegiance toggles)
+  // Colonies controls
   const coloniesController = galaxyGUI
     .add({ toggleColonies: () => app.toggleColonizedSystems() }, 'toggleColonies')
     .name('Show Colonized Systems');
   app.coloniesController = coloniesController;
 
-  // Legacy: function to create per-allegiance toggles if needed later (not invoked)
-  function createLegacyAllegianceControls(parent) {
-    const legacy = parent.addFolder('Allegiances (Legacy)');
-    legacy.add({ allVisible: true }, 'allVisible')
-      .name('Show All')
-      .onChange((val) => { Object.values(app.allegianceGroups).forEach(g => { g.visible = val; }); });
-    Object.keys(app.allegianceGroups).forEach((name) => {
-      const group = app.allegianceGroups[name];
-      legacy.add(group, 'visible').name(name);
+  // Allegiance checkboxes folder
+  const allegiances = app.getColoniesAllegiances && app.getColoniesAllegiances() || [];
+  if (allegiances.length > 0) {
+    const allegiancesFolder = galaxyGUI.addFolder('Allegiances');
+    app.coloniesAllegiancesFolder = allegiancesFolder;
+    app.coloniesCheckboxes = [];
+    
+    allegiances.forEach((allegiance) => {
+      const checkboxState = { visible: true };
+      const checkboxCtrl = allegiancesFolder
+        .add(checkboxState, 'visible')
+        .name(allegiance)
+        .onChange((val) => {
+          if (app.setColonyAllegianceVisible) app.setColonyAllegianceVisible(allegiance, val);
+        });
+      app.coloniesCheckboxes.push(checkboxCtrl);
+      
+      // Show/hide based on initial coloniesVisible state
+      try { checkboxCtrl.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
     });
-    legacy.hide();
-    return legacy;
+    
+    // Show/hide folder based on initial coloniesVisible state
+    try { allegiancesFolder.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
   }
 
-  // Visible Step slider - COMMENTED OUT - time-based aspect lost in GLTF creation
-  // const state = { step: 44 };
-  // const visibleStepController = galaxyGUI.add(state, 'step', 0, 44, 1)
-  //   .name('Visible Step')
-  //   .onChange((val) => {
-  //     Object.values(app.allegianceGroups).forEach((group) => {
-  //       if (!group.visible) return;
-  //       const meshes = [];
-  //       group.traverse((obj) => { if (obj.isPoints) meshes.push(obj); });
-  //       meshes.sort((a, b) => a.name.localeCompare(b.name));
-  //       meshes.forEach((m, i) => { m.visible = (i === 0) || (i <= val); });
-  //     });
-  //   });
-  // app.visibleStepController = visibleStepController;
-  // // Hide the Visible Step control if colonies are initially hidden
-  // try { if (!app.coloniesVisible) visibleStepController.domElement.style.display = 'none'; } catch (e) {}
+  // Timelapse slider (will appear when colonies are shown)
+  const timelineLength = app.getColoniesTimelineLength ? app.getColoniesTimelineLength() : 1;
+  const timelineState = { position: 0 };
+  const coloniesTimelineCtrl = galaxyGUI
+    .add(timelineState, 'position', 0, Math.max(1, timelineLength - 1), 1)
+    .name('Colonies Timeline')
+    .onChange((val) => {
+      if (app.setColoniesTimelinePosition) app.setColoniesTimelinePosition(val);
+    });
+  app.coloniesTimelineController = coloniesTimelineCtrl;
+  // Show/hide based on initial coloniesVisible state
+  try { coloniesTimelineCtrl.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
 
+  // Date display element (created outside of lil-gui)
+  const coloniesDateDisplay = document.createElement('div');
+  coloniesDateDisplay.id = 'colonies-date-display';
+  coloniesDateDisplay.style.display = app.coloniesVisible ? '' : 'none';
+  coloniesDateDisplay.style.position = 'absolute';
+  coloniesDateDisplay.style.left = '330px'; // Next to GUI
+  coloniesDateDisplay.style.top = '790px'; // Align with timeline slider
+  coloniesDateDisplay.style.fontSize = '12px';
+  coloniesDateDisplay.style.color = '#888';
+  coloniesDateDisplay.style.fontFamily = 'monospace';
+  coloniesDateDisplay.style.pointerEvents = 'none';
+  coloniesDateDisplay.textContent = 'Baseline';
+  document.body.appendChild(coloniesDateDisplay);
+  app.coloniesDateDisplay = coloniesDateDisplay;
 
   // Colonies opacity slider (applies to all allegiance groups / colony meshes)
   const coloniesOpacityCtrl = galaxyGUI.add(app, 'coloniesOpacity', 0, 1, 0.01)
