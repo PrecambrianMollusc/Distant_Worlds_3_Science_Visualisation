@@ -847,12 +847,24 @@ Everyone who contributes data`
   galaxyClose.style.background = 'transparent';
   galaxyClose.style.color = '#888';
   galaxyClose.style.cursor = 'pointer';
-  galaxyClose.addEventListener('click', (e) => { e.stopPropagation(); galaxyGUI.hide(); });
+  galaxyClose.addEventListener('click', (e) => { 
+    e.stopPropagation(); 
+    galaxyGUI.hide(); 
+    if (app.coloniesDateDisplay) app.coloniesDateDisplay.style.display = 'none';
+  });
   galaxyHeader.appendChild(galaxyClose);
   galaxyClose.addEventListener('click', (e) => { e.stopPropagation(); if (modes.current === 'Galaxy Visuals') modes.current = null; updateRadioHighlight(); });
   galaxyHeader.addEventListener('click', () => {
-    if (galaxyGUI.domElement.style.display === 'none') { galaxyGUI.show(); modes.current = 'Galaxy Visuals'; }
-    else { galaxyGUI.hide(); if (modes.current === 'Galaxy Visuals') modes.current = null; }
+    if (galaxyGUI.domElement.style.display === 'none') { 
+      galaxyGUI.show(); 
+      if (app.coloniesDateDisplay && app.coloniesVisible) app.coloniesDateDisplay.style.display = '';
+      modes.current = 'Galaxy Visuals'; 
+    }
+    else { 
+      galaxyGUI.hide(); 
+      if (app.coloniesDateDisplay) app.coloniesDateDisplay.style.display = 'none';
+      if (modes.current === 'Galaxy Visuals') modes.current = null; 
+    }
     updateRadioHighlight();
   });
   galaxyGUI.domElement.prepend(galaxyHeader);
@@ -1000,6 +1012,40 @@ Everyone who contributes data`
 
   // Allow app to report mode changes programmatically so the selection UI stays in sync
   app.reportGUIMode = (mode) => { modes.current = mode; updateRadioHighlight(); };
+
+  // When modeGUI visibility toggles, also toggle any open mode GUI
+  const allModeGUIs = [expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI];
+  let modeGUIPreviouslyVisible = true;
+  let visibleModeGUIsBeforeHide = new Set();
+  
+  const modeGUIMutationObserver = new MutationObserver(() => {
+    const modeGUIVisible = modeGUI.domElement.style.display !== 'none';
+    
+    if (!modeGUIPreviouslyVisible && modeGUIVisible) {
+      // modeGUI was hidden, now showing: restore previously visible mode GUIs
+      visibleModeGUIsBeforeHide.forEach(gui => {
+        if (gui && gui.domElement) gui.show();
+      });
+      visibleModeGUIsBeforeHide.clear();
+    } else if (modeGUIPreviouslyVisible && !modeGUIVisible) {
+      // modeGUI was visible, now hiding: save and hide all visible mode GUIs
+      visibleModeGUIsBeforeHide.clear();
+      allModeGUIs.forEach(gui => {
+        if (gui && gui.domElement && gui.domElement.style.display !== 'none') {
+          visibleModeGUIsBeforeHide.add(gui);
+          gui.hide();
+        }
+      });
+    }
+    
+    modeGUIPreviouslyVisible = modeGUIVisible;
+  });
+  
+  modeGUIMutationObserver.observe(modeGUI.domElement, {
+    attributes: true,
+    attributeFilter: ['style'],
+    attributeOldValue: true
+  });
 
   return { modeGUI, expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI };
 }

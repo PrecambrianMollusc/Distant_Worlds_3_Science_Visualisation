@@ -1332,13 +1332,15 @@ export class App {
     try { if (galaxyGUI) galaxyGUI.hide(); } catch (e) {}
     try { if (earthGUI) earthGUI.hide(); } catch (e) {}
     if (this.reportGUIMode) this.reportGUIMode(null);
+    // Hide colonies date display when switching away from Galaxy Visuals
+    if (this.coloniesDateDisplay) this.coloniesDateDisplay.style.display = 'none';
 
     // Show selected
     if (mode === 'Expedition Waypoints') { if (expeditionGUI) { expeditionGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Expedition Waypoints'); } this.focusCameraOnColonization(); this.loadModeAssets('colonization'); }
     else if (mode === 'Stellar Properties') { if (propertiesGUI) { propertiesGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Properties'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
     else if (mode === 'IGAU Eishoqs') { if (igauEishoqsGUI) { igauEishoqsGUI.show(); if (this.reportGUIMode) this.reportGUIMode('IGAU Eishoqs'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
     else if (mode === 'Stellar Density') { if (densityGUI) { densityGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Density'); } this.focusCameraOnDW3(); this.loadModeAssets('dw3'); }
-    else if (mode === 'Galaxy Visuals') { if (galaxyGUI) { galaxyGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Galaxy Visuals'); } this.focusCameraOnScience(); this.loadModeAssets('science'); }
+    else if (mode === 'Galaxy Visuals') { if (galaxyGUI) { galaxyGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Galaxy Visuals'); } if (this.coloniesVisible && this.coloniesDateDisplay) this.coloniesDateDisplay.style.display = ''; this.focusCameraOnScience(); this.loadModeAssets('science'); }
     else if (mode === 'Earth Like Worlds') { if (earthGUI) { earthGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Earth Like Worlds'); } }
   }
 

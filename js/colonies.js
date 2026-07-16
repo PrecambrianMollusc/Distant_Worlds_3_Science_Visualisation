@@ -273,7 +273,15 @@ export class ColoniesTimelapseManager extends TimelapseManager {
    */
   formatDateForDisplay(dateStr) {
     if (!dateStr) return 'Baseline';
-    return dateStr.replace(/_/g, '-');
+    const formatted = dateStr.replace(/_/g, '-');
+    // Add 1286 years for Elite Dangerous in-game date (3312 era)
+    const parts = formatted.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const inGameYear = year + 1286;
+      return `${inGameYear}-${parts[1]}-${parts[2]}`;
+    }
+    return formatted;
   }
 
   /**
