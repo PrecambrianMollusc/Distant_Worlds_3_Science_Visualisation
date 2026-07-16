@@ -128,38 +128,35 @@ export class ColoniesTimelapseManager extends TimelapseManager {
 
   /**
    * Override init to add material settings and per-allegiance loading tracking.
+   * Uses parallel loading for better performance.
    */
   async init() {
     try {
-      // Calculate expected load count
       this.coloniesExpectedLoadCount = this.categories.length;
       
-      // Load all baselines + updates
-      for (const category of this.categories) {
+      // Phase 1: Discover and load all baselines in parallel
+      console.log('Phase 1: Loading baselines...');
+      const baselinePromises = this.categories.map(async (category) => {
         this.categoryState[category] = {
           visible: true,
           opacity: this.masterOpacity,
           timelinePosition: this.timelinePosition
         };
         
-        // Use category path map to get the correct directory path
         const dirPath = this.getCategoryPath(category);
         const categoryPath = `${this.basePath}${dirPath}/`;
         
         try {
-          // Load baseline
           const baselineUrl = categoryPath + this.baselinePattern.replace('{category}', category);
-          console.log(`Loading colonies baseline: ${baselineUrl}`);
+          console.log(`Loading baseline: ${baselineUrl}`);
           const baselineGltf = await this.loader(baselineUrl);
           
-          // Create master group for this category
           const masterGroup = new THREE.Group();
           masterGroup.name = `colonies_${category}`;
           masterGroup.userData.category = category;
           masterGroup.userData.baseline = baselineGltf.scene;
           masterGroup.add(baselineGltf.scene);
           
-          // Apply point material settings (sprite, size, etc.)
           if (this.sprite) {
             applyPointMaterialSettings(masterGroup, this.sprite);
           }
@@ -167,67 +164,107 @@ export class ColoniesTimelapseManager extends TimelapseManager {
           this.scene.add(masterGroup);
           this.categoryGroups[category] = masterGroup;
           
-          // Discover and load updates for this category
+          return { category, categoryPath };
+        } catch (err) {
+          console.error(`Failed to load baseline for ${category}:`, err);
+          this.coloniesInitialLoadCount++;
+          return null;
+        }
+      });
+      
+      const baselineResults = await Promise.all(baselinePromises);
+      console.log('Phase 1 complete: all baselines loaded');
+      
+      // Phase 2: Discover all updates and prepare load list
+      console.log('Phase 2: Discovering updates...');
+      const updatePromises = [];
+      
+      for (const result of baselineResults) {
+        if (!result) continue;
+        const { category, categoryPath } = result;
+        
+        try {
           const updates = await this.discoverUpdatesForCategory(categoryPath, category);
-          
-          // Load update meshes
-          for (const update of updates) {
-            try {
-              console.log(`Loading update: ${update.url}`);
-              const updateGltf = await this.loader(update.url);
-              const updateScene = updateGltf.scene;
-              
-              // Apply materials
-              if (this.sprite) {
-                applyPointMaterialSettings(updateScene, this.sprite);
-              }
-              
-              // Set initial opacity to 0 (updates are hidden at timeline position 0)
-              updateScene.traverse(obj => {
-                if (obj.material) {
-                  obj.material.opacity = 0;
-                  obj.material.transparent = true;
-                }
-              });
-              
-              // Initially hidden (timeline position 0 shows baseline only)
-              updateScene.visible = false;
-              
-              // Add as child of master group
-              masterGroup.add(updateScene);
-              update.mesh = updateScene;
-            } catch (err) {
-              console.warn(`Failed to load update ${update.url}:`, err);
-            }
-          }
-          
           this.categoryUpdates[category] = updates;
           
-          // Collect all unique dates
+          // Add all updates to load queue
+          updates.forEach(update => {
+            updatePromises.push({
+              category,
+              update,
+              categoryPath
+            });
+          });
+          
+          // Collect unique dates
           updates.forEach(u => {
-            // Ensure this date is in our global list
             if (!this.updateDates.includes(u.date)) {
               this.updateDates.push(u.date);
             }
           });
-          
-          this.coloniesInitialLoadCount++;
         } catch (err) {
-          console.error(`Failed to load colonies baseline for ${category}:`, err);
-          this.coloniesInitialLoadCount++;
+          console.error(`Failed to discover updates for ${category}:`, err);
         }
       }
       
-      // Sort all unique dates
-      this.updateDates.sort();
+      console.log(`Phase 2 complete: discovered ${updatePromises.length} updates`);
       
-      // Initialize all category states with baseline only (timeline position 0)
+      // Phase 3: Load all updates in parallel (with concurrency limit)
+      console.log('Phase 3: Loading updates (parallel)...');
+      const concurrencyLimit = 10; // Load max 10 files at once
+      const updateLoaders = [];
+      
+      for (let i = 0; i < updatePromises.length; i += concurrencyLimit) {
+        const batch = updatePromises.slice(i, i + concurrencyLimit);
+        const batchPromises = batch.map(({ category, update }) => 
+          this.loadUpdateMesh(category, update)
+        );
+        
+        await Promise.all(batchPromises);
+        console.log(`Loaded batch: ${Math.min(i + concurrencyLimit, updatePromises.length)}/${updatePromises.length}`);
+      }
+      
+      console.log('Phase 3 complete: all updates loaded');
+      
+      // Sort dates and finalize
+      this.updateDates.sort();
       this.setTimelinePosition(0);
       
-      // Call the ready callback
+      console.log('Colonies initialization complete');
       if (this.onReady) this.onReady();
     } catch (err) {
       console.error('ColoniesTimelapseManager init failed:', err);
+    }
+  }
+
+  /**
+   * Load a single update mesh (helper for parallel loading).
+   */
+  async loadUpdateMesh(category, update) {
+    try {
+      const updateGltf = await this.loader(update.url);
+      const updateScene = updateGltf.scene;
+      
+      if (this.sprite) {
+        applyPointMaterialSettings(updateScene, this.sprite);
+      }
+      
+      // Set initial opacity to 0
+      updateScene.traverse(obj => {
+        if (obj.material) {
+          obj.material.opacity = 0;
+          obj.material.transparent = true;
+        }
+      });
+      
+      updateScene.visible = false;
+      const masterGroup = this.categoryGroups[category];
+      if (masterGroup) {
+        masterGroup.add(updateScene);
+        update.mesh = updateScene;
+      }
+    } catch (err) {
+      console.warn(`Failed to load update ${update.url}:`, err);
     }
   }
 
