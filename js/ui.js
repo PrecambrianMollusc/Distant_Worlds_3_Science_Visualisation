@@ -64,8 +64,7 @@ export function initGUIs(app) {
 
   const creditsFolder = modeGUI.addFolder('Credits');
   const creditsState = {
-    text: `https://distantworlds3.space/
-Spansh - Data!
+    text: `Spansh - Data!
 EDgalaxydata.space - time lapse data
 Edastro/orvidius _galaxy map overlay + data
 Everyone who develops and maintains the Elite Data networks
