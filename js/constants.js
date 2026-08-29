@@ -7,6 +7,15 @@ export const axisRanges = {
   z: { min: -45000, max: 45000 }
 };
 
+export const systemMassthicknessSteps = [640,1280, 2560, 3840, 5120, 6400, 7680, 8960, 10240, 19200, 25600, 38400,51200,89600];
+
+export const systemMassaxisRanges = {
+  x: { min: -38825, max: 66135 },
+  y: { min: -7065, max: 5735 },
+  z: { min: -44225, max: 42815 }
+};
+
+
 export const labels = {
   "NGC 133": [-954.0, -382.0, -397.0],
   "Orion Dark": [-1337, -312, 603.0],

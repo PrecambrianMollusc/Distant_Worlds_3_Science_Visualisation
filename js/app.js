@@ -4,6 +4,7 @@ import GUI from './lil-gui.esm.js';
 import { loadGLTF, loader } from './loaders.js';
 import { applyPointMaterialSettings, createStarCloudMaterial, focusCameraOnObject, setPointSize, createTextSprite } from './utils.js';
 import { thicknessSteps, axisRanges, labels } from './constants.js';
+import { systemMassthicknessSteps, systemMassaxisRanges} from './constants.js';
 import { initGUIs } from './ui.js';
 import { ColoniesTimelapseManager } from './colonies.js';
 
@@ -31,6 +32,21 @@ export class App {
   static isoGroup = null;
   static currentIsoSlider = 0;
   static isoLoadCount = 0;
+
+  static systemMassFiles = [
+    { level: "1e-1", file: "KDEglb/system_mass_A.gltf" },
+    { level: "1e-2", file: "KDEglb/system_mass_B.gltf" },
+    { level: "1e-3", file: "KDEglb/system_mass_C.gltf" },
+    { level: "1e-4", file: "KDEglb/system_mass_D.gltf" },
+    { level: "1e-5", file: "KDEglb/system_mass_E.gltf" },
+    { level: "1e-6", file: "KDEglb/system_mass_F.gltf" },
+    { level: "1e-7", file: "KDEglb/system_mass_G.gltf" },
+    { level: "1e-8", file: "KDEglb/system_mass_H.gltf" },
+  ];
+  static systemMassMeshes = [];
+  static systemMassGroup = null;
+  static currentSystemMassSlider = 0;
+  static systemMassLoadCount = 0;
 
   // GUI / interactive state
   // Selection UI removed for this application
@@ -128,7 +144,12 @@ export class App {
   static igauBMassGroup = null;
   static igauBMassController = null;
   static igauBMassState = { opacity: 0.5, colorTemp: 0.7 };
-  
+
+  static exclusionZoneGroup = null;
+  static exclusionZoneController = null;
+  static exclusionZoneState = { opacity: 0.5, colorTemp: 0.7 };
+
+
   // Sector Boundary Box
   static sectorBoundaryBox = null;
   static sectorBoundaryController = null;
@@ -147,9 +168,22 @@ export class App {
   static clippingEnabled = false;
   static clipController = null;
   static clipState = { axis: 'x', center: 0, thicknessIndex: 0 };
-
   static thicknessSteps = thicknessSteps;
   static axisRanges = axisRanges;
+
+
+  static systemMassclipPlanes = [];
+  static systemMassClippingEnabled = false;
+  static systemMassclipController = null;
+    static systemMassclipState = { 
+    systemMassaxis: 'y', 
+    systemMasscenter: -665, 
+    systemMassthicknessIndex: 1 
+  };
+  // static systemMassclipState = { axis: 'y', center: 0, thicknessIndex: 5 };
+  static systemMassthicknessSteps = systemMassthicknessSteps;
+  static systemMassaxisRanges = systemMassaxisRanges;
+
 
   static sprite_sphere = null;
 
@@ -203,13 +237,13 @@ export class App {
         // Initialize GUI once colonies are loaded
         this.guiRefs = initGUIs(this);
         // Ensure default mode UI is visible once GUIs are ready (start in Galaxy Visuals)
-        this.switchMode('Galaxy Visuals');
+        // this.switchMode('Galaxy Visuals');
         // Ensure Galactic Map is shown by default
         try { if (!this.galacticPlane || !this.galacticPlane.visible) this.toggleGalacticPlane(); } catch (e) {}
         // Sync initial colonies visibility
-        this.setColoniesVisible(this.coloniesVisible);
+        // this.setColoniesVisible(this.coloniesVisible);
         // Apply initial colonies opacity
-        if (this.setColoniesOpacity) this.setColoniesOpacity(this.coloniesOpacity);
+        // if (this.setColoniesOpacity) this.setColoniesOpacity(this.coloniesOpacity);
       }
     });
     
@@ -992,6 +1026,79 @@ export class App {
     }
   }
 
+    static setsystemMassVisibility(val) {
+    this.currentSystemMassSlider = val;
+    this.systemMassMeshes.forEach((m, i) => { if (m) m.visible = (i === val); });
+  }
+
+  static togglesystemMassGroup() {
+    if (!this.systemMassGroup) {
+      // Start loading iso GLBs once; disable the UI button while loading
+      if (this.systemMassController) {
+        try { const btn = this.systemMassController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading system Mass ...'; } } catch (e) {}
+      }
+      this.systemMassGroup = new THREE.Group(); this.scene.add(this.systemMassGroup);
+      this.systemMassLoadCount = 0;
+      this.systemMassFiles.forEach((iso, idx) => {
+        loadGLTF(iso.file).then((gltf) => {
+          // const mesh = gltf.scene; mesh.visible = false; this.systemMassGroup.add(mesh); this.systemMassMeshes[idx] = mesh; this.styleSingleIsoMesh(mesh, idx, this.systemMassFiles.length);
+          const mesh = gltf.scene; mesh.visible = false; this.systemMassGroup.add(mesh); this.systemMassMeshes[idx] = mesh;
+          console.info(`ISO: ${iso}    idx: ${idx}    mesh: ${mesh.name}`);
+          // Apply current slider visibility to this newly-loaded mesh
+          mesh.visible = (idx === (this.currentSystemMassSlider || 0));
+          this.systemMassLoadCount++;
+          if (this.systemMassLoadCount === this.systemMassFiles.length) {
+            // All iso levels loaded
+            if (this.systemMassController) {
+              try { this.systemMassController.name('Hide System Mass'); const btn = this.systemMassController.domElement.querySelector('button'); if (btn) { btn.disabled = false; btn.title = ''; } } catch (e) {}
+            }
+            // Ensure clipping planes are applied if enabled
+            if (this.clippingEnabled) this.applyClippingPlanes();
+          }
+        }).catch((err) => { console.error('Iso load failed', err); });
+      });
+      // Show the group container (individual meshes will show per slider)
+      this.systemMassGroup.visible = true;
+      // show iso slider when iso group is visible
+      if (this.systemMassSliderCtrl && this.systemMassSliderCtrl.domElement) { try { this.systemMassSliderCtrl.domElement.style.display = ''; } catch (e) {} }
+    } else {
+      this.systemMassGroup.visible = !this.systemMassGroup.visible;
+      if (this.systemMassController) this.systemMassController.name(this.systemMassGroup.visible ? 'Hide System Mass' : 'Show System Mass');
+      if (this.systemMassSliderCtrl && this.systemMassSliderCtrl.domElement) { try { this.systemMassSliderCtrl.domElement.style.display = this.systemMassGroup.visible ? '' : 'none'; } catch (e) {} }
+    }
+  }
+  static applySystemMassClippingPlanes() {
+    if (!this.systemMassClippingEnabled) return;
+    const { systemMassaxis, systemMasscenter, systemMassthicknessIndex } = this.systemMassclipState;
+    const systemMassthickness = this.systemMassthicknessSteps[systemMassthicknessIndex] ?? this.systemMassthicknessSteps[1];
+    console.info(`Thickness: ${systemMassthickness}    Thickness Index: ${systemMassthicknessIndex}`);
+    console.info(`axis: ${systemMassaxis}    center: ${systemMasscenter}`);
+    const systemMasshalf = systemMassthickness / 2;
+    let normal = new THREE.Vector3(1,0,0);
+    if (systemMassaxis === 'y') normal.set(0,1,0); else if (systemMassaxis === 'z') normal.set(0,0,1);
+    const systemMassminVal = systemMasscenter - systemMasshalf; const systemMassmaxVal = systemMasscenter + systemMasshalf;
+    const systemMassplaneMin = new THREE.Plane(normal.clone(), -systemMassminVal); const systemMassplaneMax = new THREE.Plane(normal.clone().negate(), systemMassmaxVal);
+    this.systemMassclipPlanes = [systemMassplaneMin, systemMassplaneMax];
+    console.info(`Applying System Mass Clipping Plane along axis ${systemMassaxis}. Center: ${systemMasscenter}, Thickness: ${systemMassthickness}, Min: ${systemMassminVal}, Max: ${systemMassmaxVal}`);
+    this.systemMassMeshes.forEach(m => { if (!m) return; m.traverse(obj => { if (obj.isMesh && obj.material) { obj.material.clippingPlanes = this.systemMassclipPlanes; obj.material.clipShadows = true; } }); });
+  }
+
+  static toggleSystemMassClippingSlab() {
+    if (!this.systemMassClippingEnabled) {
+      this.renderer.localClippingEnabled = true; this.systemMassClippingEnabled = true; this.applySystemMassClippingPlanes(); if (this.systemMassclipController) this.systemMassclipController.name('Disable Clipping Slab');
+      // show clipping child controls
+      if (this.systemMasscenterController && this.systemMasscenterController.domElement) { try { this.systemMasscenterController.domElement.style.display = ''; } catch (e) {} }
+      if (this.systemMassthicknessController && this.systemMassthicknessController.domElement) { try { this.systemMassthicknessController.domElement.style.display = ''; } catch (e) {} }
+      if (this.systemMassclipAxisController && this.systemMassclipAxisController.domElement) { try { this.systemMassclipAxisController.domElement.style.display = ''; } catch (e) {} }
+    } else {
+      this.renderer.localClippingEnabled = false; this.systemMassMeshes.forEach(m => { if (!m) return; m.traverse(obj => { if (obj.isMesh && obj.material) obj.material.clippingPlanes = []; }); }); this.systemMassClippingEnabled = false; if (this.systemMassclipController) this.systemMassclipController.name('Enable Clipping Slab');
+      // hide clipping child controls
+      if (this.systemMasscenterController && this.systemMasscenterController.domElement) { try { this.systemMasscenterController.domElement.style.display = 'none'; } catch (e) {} }
+      if (this.systemMassthicknessController && this.systemMassthicknessController.domElement) { try { this.systemMassthicknessController.domElement.style.display = 'none'; } catch (e) {} }
+      if (this.systemMassclipAxisController && this.systemMassclipAxisController.domElement) { try { this.systemMassclipAxisController.domElement.style.display = 'none'; } catch (e) {} }
+    }
+  }  
+
   static async toggleWolfRayet() {
     if (!this.wolfRayetGroup) {
       // First-time load
@@ -999,7 +1106,8 @@ export class App {
         try { const btn = this.wolfRayetController.domElement.querySelector('button'); if (btn) { btn.disabled = true; btn.title = 'Loading Wolf Rayet data...'; } } catch (e) {}
       }
       try {
-        const gltf = await loadGLTF('./Star_Type_Glb/Wolf-Rayet-stars_pointcloud.glb');
+        //const gltf = await loadGLTF('./Star_Type_Glb/Wolf-Rayet-stars_pointcloud.glb');
+        const gltf = await loadGLTF('./Star_Type_Glb/net_result.glb');
         this.wolfRayetGroup = gltf.scene;
         const starColor = this.getStarColorFromTemp(this.wolfRayetState.colorTemp);
         this.wolfRayetGroup.traverse((obj) => {
@@ -1114,6 +1222,7 @@ export class App {
     this.isoMeshes.forEach((m, i) => { if (m) m.visible = (i < val); });
   }
 
+
   static styleSingleIsoMesh(mesh, idx, total) {
     const t = 1 - (idx / (total - 1));
     const opacity = 0.15 + 0.5 * t;
@@ -1150,6 +1259,9 @@ export class App {
       if (this.clipAxisController && this.clipAxisController.domElement) { try { this.clipAxisController.domElement.style.display = 'none'; } catch (e) {} }
     }
   }
+
+
+
 
   // IGAU Eishoqs Mass Code Toggle Functions
   static async toggleIgauHMass() {
@@ -1320,12 +1432,93 @@ export class App {
     }
   }
 
+  static async toggleexclusionZone() {
+    if (!this.exclusionZoneGroup) {
+      // First-time load: Disable button UI during async fetch via lil-gui's $el
+      if (this.exclusionZoneController && this.exclusionZoneController.$el) {
+        const btn = this.exclusionZoneController.$el.querySelector('button');
+        if (btn) {
+          btn.disabled = true;
+          btn.title = 'Loading permit Lock data...';
+        }
+      }
+
+      try {
+        const gltf = await loadGLTF('./Star_Type_Glb/net_result_allPLZ.glb');
+        this.exclusionZoneGroup = gltf.scene;
+        
+        this.exclusionZoneState = { opacity: 0.5, colorTemp: 1.0 };
+        const exclusionZoneColor = this.getStarColorFromTemp(this.exclusionZoneState.colorTemp);
+        this.exclusionZoneGroup.traverse((obj) => {
+          if (obj.material) {
+            obj.material = obj.material.clone();
+            obj.material.transparent = true;
+            obj.material.opacity = this.exclusionZoneState.opacity;
+            obj.material.color = exclusionZoneColor.clone();
+            obj.material.emissive = exclusionZoneColor.clone();
+            obj.material.emissiveIntensity = 0.8;
+            obj.material.depthWrite = false;
+            obj.material.depthTest = true;    // Allows it to respect geometry position
+            obj.renderOrder = 10;      
+          }
+        });
+
+        this.scene.add(this.exclusionZoneGroup);
+        this.exclusionZoneGroup.visible = true;
+
+        // Re-enable the load button and change text
+        if (this.exclusionZoneController) {
+          this.exclusionZoneController.name('Hide Permit Lock Zone');
+          if (this.exclusionZoneController.$el) {
+            const btn = this.exclusionZoneController.$el.querySelector('button');
+            if (btn) {
+              btn.disabled = false;
+              btn.title = '';
+            }
+          }
+        }
+
+        // Safely show extra sliders using native lil-gui API
+        if (this.exclusionZoneOpacityController) this.exclusionZoneOpacityController.show();
+        if (this.exclusionZoneColorController) this.exclusionZoneColorController.show();
+
+      } catch (err) {
+        console.error('permit lock load failed', err);
+        if (this.exclusionZoneController && this.exclusionZoneController.$el) {
+          const btn = this.exclusionZoneController.$el.querySelector('button');
+          if (btn) {
+            btn.disabled = false;
+            btn.title = 'Load failed - check console';
+          }
+        }
+      }
+     } else {
+        // Toggle visibility if already loaded
+        this.exclusionZoneGroup.visible = !this.exclusionZoneGroup.visible;
+        
+        if (this.exclusionZoneController) {
+          this.exclusionZoneController.name(
+            this.exclusionZoneGroup.visible ? 'Hide Permit Lock Zone' : 'Show Permit Lock Zones'
+          );
+        }
+      }    
+      // Toggle slider visibility smoothly with native lil-gui API
+        if (this.exclusionZoneOpacityController) {
+          this.exclusionZoneGroup.visible ? this.exclusionZoneOpacityController.show() : this.exclusionZoneOpacityController.hide();
+        }
+        if (this.exclusionZoneColorController) {
+          this.exclusionZoneGroup.visible ? this.exclusionZoneColorController.show() : this.exclusionZoneColorController.hide();
+        }
+    }
+
+    
+
   static switchMode(mode) {
     // Show or hide per-mode GUI folders returned from initGUIs
     if (!this.guiRefs) return;
-    const { expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI } = this.guiRefs;
+    const { colonisationGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI } = this.guiRefs;
     // Hide all first
-    try { if (expeditionGUI) expeditionGUI.hide(); } catch (e) {}
+    try { if (colonisationGUI) colonisationGUI.hide(); } catch (e) {}
     try { if (propertiesGUI) propertiesGUI.hide(); } catch (e) {}
     try { if (igauEishoqsGUI) igauEishoqsGUI.hide(); } catch (e) {}
     try { if (densityGUI) densityGUI.hide(); } catch (e) {}
@@ -1336,7 +1529,7 @@ export class App {
     if (this.coloniesDateDisplay) this.coloniesDateDisplay.style.display = 'none';
 
     // Show selected
-    if (mode === 'Expedition Waypoints') { if (expeditionGUI) { expeditionGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Expedition Waypoints'); } this.focusCameraOnColonization(); this.loadModeAssets('colonization'); }
+    if (mode === 'Colonisation') { if (colonisationGUI) { colonisationGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Colonisation'); } this.focusCameraOnColonization(); this.loadModeAssets('colonization'); }
     else if (mode === 'Stellar Properties') { if (propertiesGUI) { propertiesGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Properties'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
     else if (mode === 'IGAU Eishoqs') { if (igauEishoqsGUI) { igauEishoqsGUI.show(); if (this.reportGUIMode) this.reportGUIMode('IGAU Eishoqs'); } this.focusCameraOnIGAU(); this.loadModeAssets('igau'); }
     else if (mode === 'Stellar Density') { if (densityGUI) { densityGUI.show(); if (this.reportGUIMode) this.reportGUIMode('Stellar Density'); } this.focusCameraOnDW3(); this.loadModeAssets('dw3'); }

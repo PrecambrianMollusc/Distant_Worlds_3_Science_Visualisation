@@ -4,7 +4,7 @@ export function initGUIs(app) {
   // app is expected to expose required methods/state used below
   const modes = {
     current: null,
-    options: ['Galaxy Visuals', 'Expedition Waypoints', 'Stellar Density', 'Stellar Properties', 'IGAU Eishoqs', 'Earth Like Worlds']
+    options: ['Galaxy Visuals', 'Colonisation', 'Stellar Density', 'Stellar Properties', 'IGAU Eishoqs', 'Earth Like Worlds']
   };
 
   // Helper to add shared controls to each sub-GUI
@@ -122,7 +122,7 @@ Everyone who contributes data`
       // Toggle behavior: hide if currently selected and visible
       const guiMap = {
         'Galaxy Visuals': galaxyGUI,
-        'Expedition Waypoints': expeditionGUI,
+        'Colonisation': colonisationGUI,
         'Stellar Density': densityGUI,
         'Stellar Properties': propertiesGUI,
         'IGAU Eishoqs': igauEishoqsGUI,
@@ -177,72 +177,211 @@ Everyone who contributes data`
     if (topPx && !isNaN(topPx)) subGuiTop = `${topPx}px`;
   } catch (e) {}
 
-  // Colonization GUI
-  const expeditionGUI = new GUI({ width: 300 });
-  expeditionGUI.domElement.style.position = 'absolute';
-  expeditionGUI.domElement.style.top = subGuiTop;
-  expeditionGUI.domElement.style.left = subGuiLeft;
-  const expeditionHeader = document.createElement('div');
-  expeditionHeader.innerText = 'Expedition Waypoints Controls';
-  expeditionHeader.style.fontWeight = 'bold';
-  expeditionHeader.style.fontSize = '14px';
-  expeditionHeader.style.color = '#2196f3';
-  expeditionHeader.style.margin = '6px 0';
+  // Colonisation GUI
+  console.log('%c[GUI Init] Initializing colonisationGUI...', 'color: #2196f3; font-weight: bold;');
+  const colonisationGUI = new GUI({ width: 300 });
+  colonisationGUI.domElement.style.position = 'absolute';
+  colonisationGUI.domElement.style.top = subGuiTop;
+  colonisationGUI.domElement.style.left = subGuiLeft;
+  const colonisationHeader = document.createElement('div');
+  colonisationHeader.innerText = 'Colonisation Controls';
+  colonisationHeader.style.fontWeight = 'bold';
+  colonisationHeader.style.fontSize = '14px';
+  colonisationHeader.style.color = '#2196f3';
+  colonisationHeader.style.margin = '6px 0';
   // Add a close button and make the header toggle the visibility of the panel
-  expeditionHeader.style.display = 'flex';
-  expeditionHeader.style.justifyContent = 'space-between';
-  expeditionHeader.style.alignItems = 'center';
-  expeditionHeader.style.cursor = 'pointer';
-  const expeditionClose = document.createElement('button');
-  expeditionClose.innerText = '✕';
-  expeditionClose.title = 'Hide Expedition Controls';
-  expeditionClose.style.border = 'none';
-  expeditionClose.style.background = 'transparent';
-  expeditionClose.style.color = '#888';
-  expeditionClose.style.cursor = 'pointer';
-  expeditionClose.addEventListener('click', (e) => { e.stopPropagation(); expeditionGUI.hide(); });
-  expeditionHeader.appendChild(expeditionClose);
-  expeditionClose.addEventListener('click', (e) => { e.stopPropagation(); if (modes.current === 'Expedition Waypoints') modes.current = null; updateRadioHighlight(); });
-  expeditionHeader.addEventListener('click', () => {
-    if (expeditionGUI.domElement.style.display === 'none') { expeditionGUI.show(); modes.current = 'Expedition Waypoints'; }
-    else { expeditionGUI.hide(); if (modes.current === 'Expedition Waypoints') modes.current = null; }
-    updateRadioHighlight();
-  });
-  expeditionGUI.domElement.prepend(expeditionHeader);
+  colonisationHeader.style.display = 'flex';
+  colonisationHeader.style.justifyContent = 'space-between';
+  colonisationHeader.style.alignItems = 'center';
+  colonisationHeader.style.cursor = 'pointer';
+  const colonisationClose = document.createElement('button');
+  colonisationClose.innerText = '✕';
+  colonisationClose.title = 'Hide Colonisation Controls';
+  colonisationClose.style.border = 'none';
+  colonisationClose.style.background = 'transparent';
+  colonisationClose.style.color = '#888';
+  colonisationClose.style.cursor = 'pointer';
 
+// MERGED CLOSE BUTTON LISTENERS WITH DEBUGGING
+colonisationClose.addEventListener('click', (e) => { 
+  e.stopPropagation(); 
+  console.log('[Click] Close button ("X") clicked.');
+  
+  colonisationGUI.hide(); 
+  console.log(' -> GUI hidden.');
 
+  if (app.coloniesDateDisplay) {
+    app.coloniesDateDisplay.style.display = 'none'; 
+    console.log(' -> app.coloniesDateDisplay hidden.');
+  }
 
+  if (modes.current === 'Colonisation') {
+    modes.current = null; 
+    console.log(' -> modes.current set to null.');
+  }
 
-  expeditionGUI.hide();
-  // Removed 'Selection Results' UI (not needed for this application)
+  updateRadioHighlight(); 
+  console.log(' -> updateRadioHighlight() executed.');
+});
+colonisationHeader.appendChild(colonisationClose);
 
-  // Add shared controls (place at top of expedition GUI)
-  addSharedControls(expeditionGUI);
+// HEADER TOGGLE WITH DEBUGGING
+colonisationHeader.addEventListener('click', (e) => {
+  console.log('[Click] Header area clicked. Target element:', e.target);
 
-  // Waypoints controls
-  const waypointsController = expeditionGUI
-    .add({ toggleWaypoints: () => app.toggleWaypoints() }, 'toggleWaypoints')
-    .name('Show Waypoints');
-  app.waypointsController = waypointsController;
+  // If they click the text, handle it. If they click inside the panel, ignore it.
+  if (e.target !== colonisationHeader) {
+    console.log(' -> Click was on a child element (like the "X" button). Main header toggle bypassed.');
+    return;
+  }
 
-  const waypointsOpacityCtrl = expeditionGUI.add(app.waypointsState, 'opacity', 0, 1, 0.01)
-    .name('Waypoints Opacity')
-    .onChange((val) => {
-      if (app.waypointsGroup) {
-        app.waypointsGroup.traverse(obj => {
-          if (obj.material) {
-            obj.material.opacity = val;
-            obj.material.transparent = true;
-          }
+  const isHidden = colonisationGUI.domElement.style.display === 'none';
+  console.log(` -> GUI current display style: "${colonisationGUI.domElement.style.display}" (isHidden evaluated to: ${isHidden})`);
+
+  if (isHidden) { 
+    console.log(' -> Attempting to SHOW GUI...');
+    colonisationGUI.show(); 
+    
+    if (app.coloniesDateDisplay && app.coloniesVisible) {
+      app.coloniesDateDisplay.style.display = ''; 
+      console.log('   -> app.coloniesDateDisplay shown.');
+    } else {
+      console.log('   -> Skip display change. Condition failed:', { hasDisplay: !!app.coloniesDateDisplay, visibleFlag: app.coloniesVisible });
+    }
+    
+    modes.current = 'Colonisation'; 
+    console.log('   -> modes.current set to "Colonisation".');
+  } else { 
+    console.log(' -> Attempting to HIDE GUI...');
+    colonisationGUI.hide(); 
+    
+    if (app.coloniesDateDisplay) app.coloniesDateDisplay.style.display = 'none'; 
+    if (modes.current === 'Colonisation') modes.current = null; 
+    console.log('   -> GUI and states hidden/cleared.');
+  }
+  
+  updateRadioHighlight();
+  console.log(' -> updateRadioHighlight() executed.');
+});
+
+colonisationGUI.domElement.prepend(colonisationHeader);
+colonisationGUI.hide();
+console.log('[GUI Init] Initial state set to hidden.');
+
+// Add shared controls
+console.log('[GUI Init] Adding shared controls...');
+addSharedControls(colonisationGUI);
+console.log('[GUI Init] Setup complete.');
+
+  // colonisationClose.addEventListener('click', (e) => { e.stopPropagation(); if (modes.current === 'Colonisation') modes.current = null; updateRadioHighlight(); });
+  // colonisationHeader.addEventListener('click', () => {
+  //   if (colonisationGUI.domElement.style.display === 'none') 
+  //     { colonisationGUI.show(); if (app.coloniesDateDisplay && app.coloniesVisible) app.coloniesDateDisplay.style.display = ''; modes.current = 'Colonisation'; }
+  //   else { colonisationGUI.hide(); if (app.coloniesDateDisplay) app.coloniesDateDisplay.style.display = 'none'; if (modes.current === 'Colonisation') modes.current = null; }
+  //   updateRadioHighlight();
+  // });
+
+  // colonisationGUI.domElement.prepend(colonisationHeader);
+
+  // colonisationGUI.hide();
+  // // Removed 'Selection Results' UI (not needed for this application)
+  //   addSharedControls(colonisationGUI);
+  // // Add shared controls (place at top of expedition GUI)
+
+  // Waypoints controls  - removed for now replacing section with colonisation 
+  // const waypointsController = expeditionGUI
+  //   .add({ toggleWaypoints: () => app.toggleWaypoints() }, 'toggleWaypoints')
+  //   .name('Show Waypoints');
+  // app.waypointsController = waypointsController;
+
+  // const waypointsOpacityCtrl = expeditionGUI.add(app.waypointsState, 'opacity', 0, 1, 0.01)
+  //   .name('Waypoints Opacity')
+  //   .onChange((val) => {
+  //     if (app.waypointsGroup) {
+  //       app.waypointsGroup.traverse(obj => {
+  //         if (obj.material) {
+  //           obj.material.opacity = val;
+  //           obj.material.transparent = true;
+  //         }
+  //       });
+  //     }
+  //   });
+  // app.waypointsOpacityController = waypointsOpacityCtrl;
+  // try { if (!app.waypointsGroup) waypointsOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+
+  // Colonies controls 
+  const coloniesController = colonisationGUI
+    .add({ toggleColonies: () => app.toggleColonizedSystems() }, 'toggleColonies')
+    .name('Show Colonized Systems');
+  app.coloniesController = coloniesController;
+
+  // Allegiance checkboxes folder
+  const allegiances = app.getColoniesAllegiances && app.getColoniesAllegiances() || [];
+  if (allegiances.length > 0) {
+    const allegiancesFolder = colonisationGUI.addFolder('Allegiances');
+    app.coloniesAllegiancesFolder = allegiancesFolder;
+    app.coloniesCheckboxes = [];
+    
+    allegiances.forEach((allegiance) => {
+      const checkboxState = { visible: true };
+      const checkboxCtrl = allegiancesFolder
+        .add(checkboxState, 'visible')
+        .name(allegiance)
+        .onChange((val) => {
+          if (app.setColonyAllegianceVisible) app.setColonyAllegianceVisible(allegiance, val);
         });
-      }
+      app.coloniesCheckboxes.push(checkboxCtrl);
+      
+      // Show/hide based on initial coloniesVisible state
+      try { checkboxCtrl.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
     });
-  app.waypointsOpacityController = waypointsOpacityCtrl;
-  try { if (!app.waypointsGroup) waypointsOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+    
+    // Show/hide folder based on initial coloniesVisible state
+    try { allegiancesFolder.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
+  }
+
+  // Timelapse slider (will appear when colonies are shown)
+  const timelineLength = app.getColoniesTimelineLength ? app.getColoniesTimelineLength() : 1;
+  const timelineState = { position: 0 };
+  const coloniesTimelineCtrl = colonisationGUI
+    .add(timelineState, 'position', 0, Math.max(1, timelineLength - 1), 1)
+    .name('Colonies Timeline')
+    .onChange((val) => {
+      if (app.setColoniesTimelinePosition) app.setColoniesTimelinePosition(val);
+    });
+  app.coloniesTimelineController = coloniesTimelineCtrl;
+  // Show/hide based on initial coloniesVisible state
+  try { coloniesTimelineCtrl.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
+
+  // Date display element (created outside of lil-gui)
+  const coloniesDateDisplay = document.createElement('div');
+  coloniesDateDisplay.id = 'colonies-date-display';
+  coloniesDateDisplay.style.display = app.coloniesVisible ? '' : 'none';
+  coloniesDateDisplay.style.position = 'absolute';
+  coloniesDateDisplay.style.left = '330px'; // Next to GUI
+  coloniesDateDisplay.style.top = '790px'; // Align with timeline slider
+  coloniesDateDisplay.style.fontSize = '12px';
+  coloniesDateDisplay.style.color = '#888';
+  coloniesDateDisplay.style.fontFamily = 'monospace';
+  coloniesDateDisplay.style.pointerEvents = 'none';
+  coloniesDateDisplay.textContent = 'Baseline';
+  document.body.appendChild(coloniesDateDisplay);
+  app.coloniesDateDisplay = coloniesDateDisplay;
+
+ 
+  // Colonies opacity slider (applies to all allegiance groups / colony meshes)
+  const coloniesOpacityCtrl = colonisationGUI.add(app, 'coloniesOpacity', 0, 1, 0.01)
+    .name('Colonies Opacity')
+    .onChange((val) => { if (app.setColoniesOpacity) app.setColoniesOpacity(val); });
+  app.coloniesOpacityController = coloniesOpacityCtrl;
+  // Hide the Colonies Opacity control if colonies are initially hidden
+  try { if (!app.coloniesVisible) coloniesOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
 
 
 
   // Stellar Properties GUI
+  
+  console.log('%c[GUI Init] Initializing stellar properties GUI...', 'color: #2196f3; font-weight: bold;');
   const propertiesGUI = new GUI({ width: 300 });
   propertiesGUI.domElement.style.top = subGuiTop;
   propertiesGUI.domElement.style.left = subGuiLeft;
@@ -404,42 +543,96 @@ Everyone who contributes data`
   app.eMassColorController = eMassColorCtrl;
   try { if (!app.eMassGroup) eMassColorCtrl.domElement.style.display = 'none'; } catch (e) {}
 
-  // Wolf Rayet controls
-  const wolfRayetController = propertiesGUI
-    .add({ toggleWolfRayet: () => app.toggleWolfRayet() }, 'toggleWolfRayet')
-    .name('Show Wolf Rayet');
-  app.wolfRayetController = wolfRayetController;
+  // // Wolf Rayet controls
+  // const wolfRayetController = propertiesGUI
+  //   .add({ toggleWolfRayet: () => app.toggleWolfRayet() }, 'toggleWolfRayet')
+  //   .name('Show Wolf Rayet');
+  // app.wolfRayetController = wolfRayetController;
 
-  const wolfRayetOpacityCtrl = propertiesGUI.add(app.wolfRayetState, 'opacity', 0, 1, 0.01)
-    .name('Wolf Rayet Opacity')
-    .onChange((val) => {
-      if (app.wolfRayetGroup) {
-        app.wolfRayetGroup.traverse(obj => {
-          if (obj.material) {
-            obj.material.opacity = val;
-            obj.material.transparent = true;
-          }
-        });
-      }
-    });
-  app.wolfRayetOpacityController = wolfRayetOpacityCtrl;
-  try { if (!app.wolfRayetGroup) wolfRayetOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
+  // const wolfRayetOpacityCtrl = propertiesGUI.add(app.wolfRayetState, 'opacity', 0, 1, 0.01)
+  //   .name('Wolf Rayet Opacity')
+  //   .onChange((val) => {
+  //     if (app.wolfRayetGroup) {
+  //       app.wolfRayetGroup.traverse(obj => {
+  //         if (obj.material) {
+  //           obj.material.opacity = val;
+  //           obj.material.transparent = true;
+  //         }
+  //       });
+  //     }
+  //   });
+  // app.wolfRayetOpacityController = wolfRayetOpacityCtrl;
+  // try { if (!app.wolfRayetGroup) wolfRayetOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
 
-  const wolfRayetColorCtrl = propertiesGUI.add(app.wolfRayetState, 'colorTemp', 0, 1, 0.01)
-    .name('Wolf Rayet Color Temp')
-    .onChange((val) => {
-      if (app.wolfRayetGroup) {
-        const starColor = app.getStarColorFromTemp(val);
-        app.wolfRayetGroup.traverse(obj => {
-          if (obj.material) {
-            obj.material.color = starColor.clone();
-            obj.material.emissive = starColor.clone();
-          }
-        });
-      }
-    });
-  app.wolfRayetColorController = wolfRayetColorCtrl;
-  try { if (!app.wolfRayetGroup) wolfRayetColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+  // const wolfRayetColorCtrl = propertiesGUI.add(app.wolfRayetState, 'colorTemp', 0, 1, 0.01)
+  //   .name('Wolf Rayet Color Temp')
+  //   .onChange((val) => {
+  //     if (app.wolfRayetGroup) {
+  //       const starColor = app.getStarColorFromTemp(val);
+  //       app.wolfRayetGroup.traverse(obj => {
+  //         if (obj.material) {
+  //           obj.material.color = starColor.clone();
+  //           obj.material.emissive = starColor.clone();
+  //         }
+  //       });
+  //     }
+  //   });
+  // app.wolfRayetColorController = wolfRayetColorCtrl;
+  // try { if (!app.wolfRayetGroup) wolfRayetColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+    
+  // Iso and clipping controls
+  
+  const systemMassController = propertiesGUI
+    .add({ togglesystemMassGroup: () => app.togglesystemMassGroup() }, 'togglesystemMassGroup')
+    .name('Show System Mass Codes ');
+  app.systemMassController = systemMassController;
+
+  const systemMassState = { slider: 0 };
+  const systemMassSliderCtrl = propertiesGUI.
+    add(systemMassState, 'slider', 0, app.systemMassFiles.length, 1)
+    .name('System Mass Code Slider')
+    .onChange((val) => { if (app.setsystemMassVisibility) app.setsystemMassVisibility(val); else app.systemMassMeshes.forEach((m, i) => { if (m) m.visible = (i === val); }); });
+  app.systemMassSliderCtrl = systemMassSliderCtrl;
+  
+  // Hide system mass slider until system mass groups are loaded / visible
+  try { if (!app.systemMassGroup) systemMassSliderCtrl.domElement.style.display = 'none'; } catch (e) {};
+
+  const systemMassclipController = propertiesGUI
+    .add({ toggleSystemMassClippingSlab: () => app.toggleSystemMassClippingSlab() }, 'toggleSystemMassClippingSlab')
+    .name('Enable Clipping Slab');
+  app.systemMassclipController = systemMassclipController;
+
+  // Clip center/thickness
+  const systemMasscenterController = propertiesGUI.add(app.systemMassclipState, 'systemMasscenter', app.systemMassaxisRanges.y.min, app.systemMassaxisRanges.y.max, 1280).name('Slice Center').onChange(() => app.applySystemMassClippingPlanes());
+  const systemMassthicknessController = propertiesGUI.add(app.systemMassclipState, 'systemMassthicknessIndex', 0, app.systemMassthicknessSteps.length - 1, 1).name('Slice Thickness').onChange(() => { app.applySystemMassClippingPlanes(); systemMassupdateThicknessLabel(); });
+  console.info(`y min: ${app.systemMassaxisRanges.y.min}    y max: ${app.systemMassaxisRanges.y.max}`);
+  app.systemMasscenterController = systemMasscenterController;
+  app.systemMassthicknessController = systemMassthicknessController;
+  // Hide clipping child controls until clipping is enabled
+  try { if (!app.systemMassClippingEnabled) { systemMasscenterController.domElement.style.display = 'none'; systemMassthicknessController.domElement.style.display = 'none'; } } catch (e) {};
+
+  function systemMassupdateThicknessLabel() {
+    const idx = Math.max(0, Math.min(app.systemMassclipState.systemMassthicknessIndex, app.systemMassthicknessSteps.length - 1));
+    const val = app.systemMassthicknessSteps[idx];
+    systemMassthicknessController.name(`Slice Thickness: ${val}`);
+  }
+  systemMassupdateThicknessLabel();
+
+  const systemMassaxisController = propertiesGUI.add(app.systemMassclipState, 'systemMassaxis', ['x','y','z']).name('Clip Axis').onChange((axis) => {
+    const systemMass_r = app.systemMassaxisRanges[axis];
+    app.systemMassclipState.systemMasscenter = (systemMass_r.min + systemMass_r.max) / 2;
+    systemMasscenterController.min(systemMass_r.min).max(systemMass_r.max).setValue(app.systemMassclipState.systemMasscenter);
+    app.systemMassclipState.systemMassthicknessIndex = 1;
+    systemMassthicknessController.setValue(app.systemMassclipState.systemMassthicknessIndex);
+    systemMassupdateThicknessLabel();
+    app.applySystemMassClippingPlanes();
+      // --- REFRESH ALL UI VISUALS AT THE VERY END ---
+    systemMasscenterController.updateDisplay();
+    systemMassthicknessController.updateDisplay();
+  });
+  app.systemMassclipAxisController = systemMassaxisController;
+  try { if (!app.systemMassClippingEnabled) systemMassaxisController.domElement.style.display = 'none'; } catch (e) {};
+
 
   // IGAU Eishoqs GUI (duplicate of Stellar Properties)
   const igauEishoqsGUI = new GUI({ width: 300 });
@@ -816,12 +1009,15 @@ Everyone who contributes data`
     const r = app.axisRanges[axis];
     app.clipState.center = (r.min + r.max) / 2;
     centerController.min(r.min).max(r.max).setValue(app.clipState.center);
-    app.clipState.thicknessIndex = 0;
+    app.clipState.thicknessIndex = 5;
     thicknessController.setValue(app.clipState.thicknessIndex);
     updateThicknessLabel();
     app.applyClippingPlanes();
   });
   app.clipAxisController = axisController;
+    // --- REFRESH ALL UI VISUALS AT THE VERY END ---
+    centerController.updateDisplay();
+    thicknessController.updateDisplay();
   try { if (!app.clippingEnabled) axisController.domElement.style.display = 'none'; } catch (e) {};
 
   densityGUI.hide();
@@ -872,72 +1068,6 @@ Everyone who contributes data`
   // Shared galactic map + star cloud
   addSharedControls(galaxyGUI);
 
-  // Colonies controls
-  const coloniesController = galaxyGUI
-    .add({ toggleColonies: () => app.toggleColonizedSystems() }, 'toggleColonies')
-    .name('Show Colonized Systems');
-  app.coloniesController = coloniesController;
-
-  // Allegiance checkboxes folder
-  const allegiances = app.getColoniesAllegiances && app.getColoniesAllegiances() || [];
-  if (allegiances.length > 0) {
-    const allegiancesFolder = galaxyGUI.addFolder('Allegiances');
-    app.coloniesAllegiancesFolder = allegiancesFolder;
-    app.coloniesCheckboxes = [];
-    
-    allegiances.forEach((allegiance) => {
-      const checkboxState = { visible: true };
-      const checkboxCtrl = allegiancesFolder
-        .add(checkboxState, 'visible')
-        .name(allegiance)
-        .onChange((val) => {
-          if (app.setColonyAllegianceVisible) app.setColonyAllegianceVisible(allegiance, val);
-        });
-      app.coloniesCheckboxes.push(checkboxCtrl);
-      
-      // Show/hide based on initial coloniesVisible state
-      try { checkboxCtrl.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
-    });
-    
-    // Show/hide folder based on initial coloniesVisible state
-    try { allegiancesFolder.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
-  }
-
-  // Timelapse slider (will appear when colonies are shown)
-  const timelineLength = app.getColoniesTimelineLength ? app.getColoniesTimelineLength() : 1;
-  const timelineState = { position: 0 };
-  const coloniesTimelineCtrl = galaxyGUI
-    .add(timelineState, 'position', 0, Math.max(1, timelineLength - 1), 1)
-    .name('Colonies Timeline')
-    .onChange((val) => {
-      if (app.setColoniesTimelinePosition) app.setColoniesTimelinePosition(val);
-    });
-  app.coloniesTimelineController = coloniesTimelineCtrl;
-  // Show/hide based on initial coloniesVisible state
-  try { coloniesTimelineCtrl.domElement.style.display = app.coloniesVisible ? '' : 'none'; } catch (e) {}
-
-  // Date display element (created outside of lil-gui)
-  const coloniesDateDisplay = document.createElement('div');
-  coloniesDateDisplay.id = 'colonies-date-display';
-  coloniesDateDisplay.style.display = app.coloniesVisible ? '' : 'none';
-  coloniesDateDisplay.style.position = 'absolute';
-  coloniesDateDisplay.style.left = '330px'; // Next to GUI
-  coloniesDateDisplay.style.top = '790px'; // Align with timeline slider
-  coloniesDateDisplay.style.fontSize = '12px';
-  coloniesDateDisplay.style.color = '#888';
-  coloniesDateDisplay.style.fontFamily = 'monospace';
-  coloniesDateDisplay.style.pointerEvents = 'none';
-  coloniesDateDisplay.textContent = 'Baseline';
-  document.body.appendChild(coloniesDateDisplay);
-  app.coloniesDateDisplay = coloniesDateDisplay;
-
-  // Colonies opacity slider (applies to all allegiance groups / colony meshes)
-  const coloniesOpacityCtrl = galaxyGUI.add(app, 'coloniesOpacity', 0, 1, 0.01)
-    .name('Colonies Opacity')
-    .onChange((val) => { if (app.setColoniesOpacity) app.setColoniesOpacity(val); });
-  app.coloniesOpacityController = coloniesOpacityCtrl;
-  // Hide the Colonies Opacity control if colonies are initially hidden
-  try { if (!app.coloniesVisible) coloniesOpacityCtrl.domElement.style.display = 'none'; } catch (e) {}
 
   const heliumController = galaxyGUI.add({ toggleHeliumCloud: () => app.toggleHeliumCloud() }, 'toggleHeliumCloud').name('Show Helium Levels');
   app.heliumController = heliumController;
@@ -948,7 +1078,36 @@ Everyone who contributes data`
   app.heliumOpacityController = heliumOpacityCtrl;
   app.heliumColorController = heliumColorCtrl;
   try { if (!app.heliumGroup) { heliumOpacityCtrl.domElement.style.display = 'none'; heliumColorCtrl.domElement.style.display = 'none'; } } catch (e) {};
+
+  // Exclusion Zone controls
+  const exclusionZoneController = galaxyGUI
+    .add({ toggleexclusionZone: () => app.toggleexclusionZone() }, 'toggleexclusionZone')
+    .name('Show Permit Locked Zones');
+  app.exclusionZoneController = exclusionZoneController;
+
+  const exclusionZoneOpacityCtrl = galaxyGUI
+     .add(app.exclusionZoneState, 'opacity', 0, 1, 0.01)
+     .name('Exclusion Zone Opacity')
+     .onChange((val) => { if (!app.exclusionZoneGroup) {return;}  app.exclusionZoneGroup.traverse(obj => { if (obj.material) { obj.material.opacity = val; obj.material.transparent = true; } }); } );
+   app.exclusionZoneOpacityController = exclusionZoneOpacityCtrl;
+  try {  if (!app.exclusionZoneGroup) exclusionZoneOpacityCtrl.domElement.style.display = 'none';  } catch (e) {}
   
+  const exclusionZoneColorCtrl = galaxyGUI.add(app.exclusionZoneState, 'colorTemp', 0, 1, 0.01)
+    .name('Exclusion Zone Color Temp')
+    .onChange((val) => {
+      if (app.exclusionZoneGroup) {
+        const starColor = app.getStarColorFromTemp(val);
+        app.exclusionZoneGroup.traverse(obj => {
+          if (obj.material) {
+            obj.material.color = starColor.clone();
+            obj.material.emissive = starColor.clone();
+          }
+        });
+      }
+    });
+  app.exclusionZoneColorController = exclusionZoneColorCtrl;
+  try { if (!app.exclusionZoneGroup) exclusionZoneColorCtrl.domElement.style.display = 'none'; } catch (e) {}
+
   // Guardian Sites - Master toggle
   const guardianController = galaxyGUI.add({ toggleGuardianSites: () => app.toggleGuardianSites() }, 'toggleGuardianSites').name('Show Guardian Sites');
   app.guardianController = guardianController;
@@ -997,6 +1156,10 @@ Everyone who contributes data`
   earthGUI.hide();
   addSharedControls(earthGUI);
 
+  
+  earthGUI.hide();
+
+
   // Keep sub-GUIs positioned below the Mode Selection panel on layout changes
   function updateSubGuiTop() {
     try {
@@ -1014,7 +1177,7 @@ Everyone who contributes data`
   app.reportGUIMode = (mode) => { modes.current = mode; updateRadioHighlight(); };
 
   // When modeGUI visibility toggles, also toggle any open mode GUI
-  const allModeGUIs = [expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI];
+  const allModeGUIs = [colonisationGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI];
   let modeGUIPreviouslyVisible = true;
   let visibleModeGUIsBeforeHide = new Set();
   
@@ -1047,5 +1210,5 @@ Everyone who contributes data`
     attributeOldValue: true
   });
 
-  return { modeGUI, expeditionGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI };
+  return { modeGUI, colonisationGUI, propertiesGUI, igauEishoqsGUI, densityGUI, galaxyGUI, earthGUI };
 }
